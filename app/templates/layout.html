@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <title>Lookup by Site</title>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8">
+        <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+        <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='reset.css') }}" />
+    </head>
+    <body>
+      {% with messages = get_flashed_messages() %}
+      {% if messages %}
+      <ul class=flashes>
+	{% for message in messages %}
+	<li>{{ message }}</li>
+	{% endfor %}
+      </ul>
+      {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+
+
+   </body>
+</html>
