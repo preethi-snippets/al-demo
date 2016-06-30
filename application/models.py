@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
-from app import app
+from application import application
 
-db = SQLAlchemy(app)
+db = SQLAlchemy(application)
 
 class Monthly(db.Model):
     __tablename__ = 'Monthly_Site_Listing'
