@@ -14,9 +14,18 @@ def lookup():
     r = models.Monthly.query.filter_by(site=site_name).all()
     return render_template('lookup.html', site_name=site_name, time_taken=(str(time() - start) + " s."), result=r)
 
-'''@application.route('/top3')
+@application.route('/top3')
 def top3():
-    territory = request.args['territory']
-    r = models.get_top_3_by_territory(territory=territory)
-    return render_template('index.html')
-    '''
+    territory = request.args.get('territory')
+    brand_name = request.args.get('brand')
+    start = time()
+    r = models.get_top_3_by_territory(territory=territory, brand_name=brand_name)
+    return render_template('top3.html', territory=territory, brand=brand_name, time_taken=(str(time() - start) + " s."), result=r)
+
+@application.route('/bottom3')
+def bottom3():
+    territory = request.args.get('territory')
+    brand_name = request.args.get('brand')
+    start = time()
+    r = models.get_bottom_3_by_territory(territory=territory, brand_name=brand_name)
+    return render_template('bottom3.html', territory=territory, brand=brand_name, time_taken=(str(time() - start) + " s."), result=r)
