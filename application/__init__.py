@@ -7,4 +7,3 @@ application.config['SQLALCHEMY_DATABASE_URI'] = config.database_url
 
 from application import views, models
 
-models.create_db()

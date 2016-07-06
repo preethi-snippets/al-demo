@@ -7,6 +7,12 @@ from time import time
 def hello_world():
     return render_template('index.html')
 
+@application.route('/createdb')
+def createdb():
+    start = time()
+    models.create_db()
+    return render_template('createdb.html', time_taken=(str(time() - start) + " s."))
+
 @application.route('/lookup')
 def lookup():
     site_name = request.args['site_name']
