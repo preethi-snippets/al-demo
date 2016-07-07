@@ -1,0 +1,71 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<section>
+<h1>Describe results for {{site}}, retrieved in {{time_taken}}</h1>
+<div  class="tbl-header">
+<table cellpadding="0" cellspacing="0" border="0">
+    <caption>Primary Accounts</caption>
+    <thead>
+    <tr>
+        <th>Territory</th>
+        <th>Brand</th>
+        <th>Site</th>
+        <th>R6 Contribution%</th>
+        <th>R3 Growth</th>
+    </tr>
+  </thead>
+</table>
+</div>
+<div  class="tbl-content">
+<table cellpadding="0" cellspacing="0" border="0">
+    <tbody>
+        {% for row in result['primary'] %}
+        <tr>
+            <td>{{ row.territory }}</td>
+            <td>{{ row.brand_name }}</td>
+            <td>{{ row.site }}</td>
+            <td>{{ row.r6_sales_contrib }}</td>
+            <td>{{ row.r3_growth_value }}</td>
+        </tr>
+        {% else %}
+            <tr><td><em>Unbelievable.  No entries here so far</em></td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+
+    <div  class="tbl-header">
+<table cellpadding="0" cellspacing="0" border="0">
+    <caption>Other Accounts</caption>
+    <thead>
+    <tr>
+        <th>Territory</th>
+        <th>Brand</th>
+        <th>Site</th>
+        <th>R6 Contribution%</th>
+        <th>R3 Growth</th>
+    </tr>
+  </thead>
+</table>
+</div>
+<div  class="tbl-content">
+<table cellpadding="0" cellspacing="0" border="0">
+    <tbody>
+        {% for row in result['other'] %}
+        <tr>
+            <td>{{ row.territory }}</td>
+            <td>{{ row.brand_name }}</td>
+            <td>{{ row.site }}</td>
+            <td>{{ row.r6_sales_contrib }}</td>
+            <td>{{ row.r3_growth_value }}</td>
+        </tr>
+        {% else %}
+            <tr><td><em>Unbelievable.  No entries here so far</em></td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+</section>
+
+{% endblock %}

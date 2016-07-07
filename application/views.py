@@ -1,7 +1,8 @@
 from application import application
 from flask import render_template,redirect, request, flash,g,session,url_for
-import models
+import models, config
 from time import time
+
 
 @application.route('/')
 def hello_world():
@@ -23,15 +24,28 @@ def lookup():
 @application.route('/top3')
 def top3():
     territory = request.args.get('territory')
-    brand_name = request.args.get('brand')
+    #brand_name = request.args.get('brand')
     start = time()
-    r = models.get_top_3_by_territory(territory=territory, brand_name=brand_name)
-    return render_template('top3.html', territory=territory, brand=brand_name, time_taken=(str(time() - start) + " s."), result=r)
+    r = []
+    for brand_name in config.primary_brands:
+        r.extend(models.get_top_3_by_territory(territory=territory, brand_name=brand_name))
+
+    return render_template('top3.html', territory=territory, time_taken=(str(time() - start) + " s."), result=r)
 
 @application.route('/bottom3')
 def bottom3():
     territory = request.args.get('territory')
-    brand_name = request.args.get('brand')
+    #brand_name = request.args.get('brand')
     start = time()
-    r = models.get_bottom_3_by_territory(territory=territory, brand_name=brand_name)
-    return render_template('bottom3.html', territory=territory, brand=brand_name, time_taken=(str(time() - start) + " s."), result=r)
+    r=[]
+    for brand_name in config.primary_brands:
+        r.extend(models.get_bottom_3_by_territory(territory=territory, brand_name=brand_name))
+
+    return render_template('bottom3.html', territory=territory, time_taken=(str(time() - start) + " s."), result=r)
+
+@application.route('/describe')
+def describe():
+    site = request.args.get('site')
+    start = time()
+    r = models.describe_site(site)
+    return render_template('describe.html', site=site, time_taken=(str(time() - start) + " s."), result=r)
