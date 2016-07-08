@@ -3,27 +3,13 @@
 - pip freeze > requirements.txt (needed)
 - deactivate
 
-- create new user via IAM to run this app
-    - console: https://console.aws.amazon.com/iam/home?region=us-west-2#users
-    - howto: https://medium.com/@rodkey/deploying-a-flask-application-on-aws-a72daba6bb80#.f89sse2sx
-        - copy down ID and secret key
-        - create admin group with AdministratorAccess
-        - add user to group
+- create EC2 instance running Ubuntu
+- pip install -r requirements.txt on EC2
+    - pandas, xlrd, psycopg2 will require dev packages such as python27-devel, libpq-dev etc.
 
-- pip install awsebcli
-- store new user info locally so eb can pick it up
-    - this is supposed to happen with eb init, but if it doesnt then remove .elasticbeanstalk dir and add through aws configure command
-    - aws configure --profile <username>
-        - creates ~/.aws/config and ~/.aws/credentials
-
-- eb init --profile <username>
-- eb create hello-env
-- eb status
-- eb open
-
-- to update deployed application/source 
-  - eb deploy
-  - if the source is git repo, then changes need to be committed on local repository before deploy
-
+- install apache2, libapache2-mod-wsgi
+    - need al-demo.wsgi
+- ln -sT ~/al-demo /var/www/html/al-demo
+- add snippet from 'add-to-apache-default.conf' to /etc/apache2/sites-available/000-default.conf after DocumentRoot
 
 
