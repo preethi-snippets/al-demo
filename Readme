@@ -4,12 +4,19 @@
 - deactivate
 
 - create EC2 instance running Ubuntu
-- pip install -r requirements.txt on EC2
+- pip install -r re
+- requirements.txt on EC2
     - pandas, xlrd, psycopg2 will require dev packages such as python27-devel, libpq-dev etc.
 
 - install apache2, libapache2-mod-wsgi
     - need al-demo.wsgi
 - ln -sT ~/al-demo /var/www/html/al-demo
 - add snippet from 'add-to-apache-default.conf' to /etc/apache2/sites-available/000-default.conf after DocumentRoot
+- http://flask.pocoo.org/docs/0.11/deploying/mod_wsgi/
+- http://www.datasciencebytes.com/bytes/2015/02/24/running-a-flask-app-on-aws-ec2/
+- http://peatiscoding.me/geek-stuff/mod_wsgi-apache-virtualenv/
 
-
+- install matplotlib
+    - sudo apt-get install libpng-dev libfreetype6-dev pkg-config
+    - pip install --no-cache-dir matplotlib
+    - default: Non-interactive backend 'Agg' for matplotlib
