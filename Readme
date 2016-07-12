@@ -10,11 +10,15 @@
 
 - install apache2, libapache2-mod-wsgi
     - need al-demo.wsgi
-- ln -sT ~/al-demo /var/www/html/al-demo
+- Drop code in /var/www/<folder>
+- chown -R www-data /var/www
+    - to ensure the wSgi daemon can write files in static folder
+- sudo apachectl restart
 - add snippet from 'add-to-apache-default.conf' to /etc/apache2/sites-available/000-default.conf after DocumentRoot
 - http://flask.pocoo.org/docs/0.11/deploying/mod_wsgi/
 - http://www.datasciencebytes.com/bytes/2015/02/24/running-a-flask-app-on-aws-ec2/
 - http://peatiscoding.me/geek-stuff/mod_wsgi-apache-virtualenv/
+
 
 - install matplotlib
     - sudo apt-get install libpng-dev libfreetype6-dev pkg-config

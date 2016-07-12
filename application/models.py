@@ -1,7 +1,12 @@
 from flask_sqlalchemy import SQLAlchemy
 from application import application
 from sqlalchemy.sql.expression import and_
-from pandas import read_excel, read_table
+from pandas import read_excel, read_table, Series, DataFrame
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib import pyplot as plt
+import datetime
+from dateutil.relativedelta import relativedelta
 import config
 
 db = SQLAlchemy(application)
@@ -19,6 +24,13 @@ class Monthly(db.Model):
     r6_sales = db.Column('r6_sales', db.Integer)
     r3_growth_value = db.Column('r3_growth_value', db.Integer)
     r6_sales_contrib = db.Column('r6_sales_contrib', db.Float)
+    M1 = db.Column('M1', db.Integer)
+    M2 = db.Column('M2', db.Integer)
+    M3 = db.Column('M3', db.Integer)
+    M4 = db.Column('M4', db.Integer)
+    M5 = db.Column('M5', db.Integer)
+    M6 = db.Column('M6', db.Integer)
+
 
 def populate_db_from_excel():
 
@@ -27,6 +39,8 @@ def populate_db_from_excel():
 
     monthly_data_cols = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12',
                          'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20', 'M21', 'M22', 'M23', 'M24']
+
+    months_to_store = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6']
 
     relevant_cols = descriptive_cols + monthly_data_cols
 
@@ -65,9 +79,11 @@ def populate_db_from_excel():
     df['r12_growth_value'] = df['p12_sales'] - df['r12_sales']
 
     # Once crunched, monthly sales data need not be stored in DB
+    months_to_discard = list(set(monthly_data_cols) - set(months_to_store))
+    print months_to_discard
     for c in df.columns:
-        if c in monthly_data_cols:
-            df = df.drop(c, axis=1)
+        if c in months_to_discard:
+          df = df.drop(c, axis=1)
 
     print df.head()
 
@@ -117,12 +133,41 @@ def get_bottom_3_by_territory(territory, brand_name):
 def describe_site(site):
 
     primary_accounts = []
+    plot_dict = {}
+    index_lst = range(1,7)
+
     for brand_name in config.primary_brands:
-        primary_accounts.extend(Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all())
+        accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
+        primary_accounts.extend(accounts)
+        plot_dict[brand_name] = Series([accounts[0].M1, accounts[0].M2, accounts[0].M3,
+                                        accounts[0].M4, accounts[0].M5, accounts[0].M6],
+                                       index=index_lst)
 
     other_accounts = []
     for brand_name in config.other_brands:
-        other_accounts.extend(Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all())
+        accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
+        other_accounts.extend(accounts)
+        plot_dict[brand_name] = Series([accounts[0].M1, accounts[0].M2, accounts[0].M3,
+                                        accounts[0].M4, accounts[0].M5, accounts[0].M6],
+                                       index=index_lst)
+
+    DataFrame(plot_dict).plot(marker='o')
+    plt.grid()
+    plt.ylabel('Number of Vials')
+    plt.ylim(ymin=0)
+    plt.xlim(xmin=0, xmax=7)
+    month_labels = [datetime.datetime.strftime((datetime.datetime.strptime(config.m1_month_year, "%b %y") +
+                                                        relativedelta(months=-(i-1))), "%b %y") for i in index_lst]
+   # for i in index_lst:
+    #    month_labels.append(datetime.datetime.strftime((datetime.datetime.strptime(config.m1_month_year, "%b %y") +
+                                                       # relativedelta(months=-i-1)), "%b %y"))
+    print month_labels
+    plt.xticks(index_lst, month_labels)
+    plt.title("Trends for " + site)
+
+
+    fig_file = config.fig_dir + 'trend.png'
+    plt.savefig(fig_file)
 
     all_accounts = {'primary': primary_accounts, 'other': other_accounts}
     return all_accounts
