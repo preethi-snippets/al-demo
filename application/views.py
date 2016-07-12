@@ -1,5 +1,5 @@
 from application import application
-from flask import render_template,redirect, request, flash,g,session,url_for
+from flask import render_template,redirect, request
 import models, config
 from time import time
 
@@ -24,23 +24,19 @@ def lookup():
 @application.route('/top3')
 def top3():
     territory = request.args.get('territory')
-    #brand_name = request.args.get('brand')
     start = time()
     r = []
     for brand_name in config.primary_brands:
         r.extend(models.get_top_3_by_territory(territory=territory, brand_name=brand_name))
-
     return render_template('top3.html', territory=territory, time_taken=(str(time() - start) + " s."), result=r)
 
 @application.route('/bottom3')
 def bottom3():
     territory = request.args.get('territory')
-    #brand_name = request.args.get('brand')
     start = time()
-    r=[]
+    r = []
     for brand_name in config.primary_brands:
         r.extend(models.get_bottom_3_by_territory(territory=territory, brand_name=brand_name))
-
     return render_template('bottom3.html', territory=territory, time_taken=(str(time() - start) + " s."), result=r)
 
 @application.route('/describe')

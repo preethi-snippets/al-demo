@@ -24,3 +24,13 @@
     - sudo apt-get install libpng-dev libfreetype6-dev pkg-config
     - pip install --no-cache-dir matplotlib
     - default: Non-interactive backend 'Agg' for matplotlib
+
+
+- database optimization
+    - Monthly sales
+        - currently store M1--M6, pN, rN, rN_growth_value, rN_growth_pct for N=1, 3, 6, 12
+        - config option for which of these to store?
+    - better design for optimized search/read-only ops
+        - Separate out in tables based on ops?
+            Address info for describe
+        - top3, bottom3 for terr-level

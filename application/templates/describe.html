@@ -12,7 +12,8 @@
         <th>Brand</th>
         <th>Site</th>
         <th>R6 Contribution%</th>
-        <th>R3 Growth</th>
+        <th>R3 Vial Growth ({{ result['latest_date'] }})</th>
+        <th>R3 Percent Growth ({{ result['latest_date'] }})</th>
     </tr>
   </thead>
 </table>
@@ -27,6 +28,7 @@
             <td>{{ row.site }}</td>
             <td>{{ row.r6_sales_contrib }}</td>
             <td>{{ row.r3_growth_value }}</td>
+            <td>{{ row.r3_growth_pct }}</td>
         </tr>
         {% else %}
             <tr><td><em>Unbelievable.  No entries here so far</em></td></tr>
@@ -44,7 +46,8 @@
         <th>Brand</th>
         <th>Site</th>
         <th>R6 Contribution%</th>
-        <th>R3 Growth</th>
+        <th>R3 Vial Growth ({{ result['latest_date'] }})</th>
+        <th>R3 Percent Growth ({{ result['latest_date'] }})</th>
     </tr>
   </thead>
 </table>
@@ -59,6 +62,7 @@
             <td>{{ row.site }}</td>
             <td>{{ row.r6_sales_contrib }}</td>
             <td>{{ row.r3_growth_value }}</td>
+            <td>{{ row.r3_growth_pct }}</td>
         </tr>
         {% else %}
             <tr><td><em>Unbelievable.  No entries here so far</em></td></tr>
