@@ -13,7 +13,7 @@ import config
 db = SQLAlchemy(application)
 
 class Monthly(db.Model):
-    __tablename__ = 'monthly_sample'
+    __tablename__ = config.monthly_data_table_name
     index = db.Column('index', db.BigInteger, primary_key=True)
     #rank = db.Column('Rank', db.BigInteger)
     territory = db.Column('territory', db.String)
@@ -33,6 +33,11 @@ class Monthly(db.Model):
     M5 = db.Column('M5', db.Integer)
     M6 = db.Column('M6', db.Integer)
 
+class TerrAssoc(db.Model):
+    __tablename__ = config.terr_assoc_table_name
+    #index = db.Column('index', db.BigInteger, primary_key=True)
+    phone = db.Column('phone', db.BigInteger, primary_key=True)
+    territory = db.Column('territory', db.String)
 
 def populate_db_from_excel():
 
@@ -44,7 +49,7 @@ def populate_db_from_excel():
 
     relevant_cols = descriptive_cols.union(monthly_data_cols)
 
-    df = read_excel(config.excel_file, sheetname=config.sheet_in_excel_file,
+    df = read_excel(config.excel_file, sheetname=config.monthly_data_excel_sheet,
                     converters={'Territory':str, 'Site':str, 'Brand Name':str,
                                 'M1':int, 'M2':int, 'M3':int, 'M4':int, 'M5':int, 'M6':int, 'M7':int, 'M8':int,
                                 'M9':int, 'M10':int, 'M11':int, 'M12':int, 'M13':int, 'M14':int, 'M15':int, 'M16':int,
@@ -79,13 +84,13 @@ def populate_db_from_excel():
     rN_growth_value: growth amount between current and previous rolling sales
     '''
     if 3 in config.rN_growth_value:
-        df['r3_growth_value'] = df['p3_sales'] - df['r3_sales']
+        df['r3_growth_value'] = df['r3_sales'] - df['p3_sales']
 
     if 6 in config.rN_growth_value:
-        df['r6_growth_value'] = df['p6_sales'] - df['r6_sales']
+        df['r6_growth_value'] = df['r6_sales'] - df['p6_sales']
 
     if 12 in config.rN_growth_value:
-        df['r12_growth_value'] = df['p12_sales'] - df['r12_sales']
+        df['r12_growth_value'] = df['r12_sales'] - df['p12_sales']
 
     ''' rN_growth_pct: rN_growth_value * 100 / pN_sales
         if pN_sales == 0, then NaN
@@ -115,10 +120,21 @@ def populate_db_from_excel():
     df['r6_sales_contrib'] = df.apply(lambda row: row['r6_sales'] * 100.0 / sum_dict[(row['brand_name'], row['territory'])], axis = 1)
 
     print df.head()
-    print "Generating database from excel file: ", config.excel_file, "... ",
-    df.to_sql(con=db.get_engine(application), name=config.table_name, flavor=config.db_flavor, if_exists='replace')
+    print "Generating database from excel sheet: ", config.monthly_data_excel_sheet, "... ",
+    df.to_sql(con=db.get_engine(application), name=config.monthly_data_table_name, flavor=config.db_flavor, if_exists='replace')
     print '.'
 
+    df = read_excel(config.excel_file, sheetname=config.terr_assoc_excel_sheet,
+                    converters={'Phone': int, 'Territory': str})
+
+    df.rename(columns={'Phone': 'phone', 'Territory': 'territory'}, inplace=True)
+
+    print df.head()
+    print "Generating database from excel sheet: ", config.terr_assoc_excel_sheet, "... ",
+    df.to_sql(con=db.get_engine(application), name=config.terr_assoc_table_name, flavor=config.db_flavor, if_exists='replace')
+    print '.'
+
+'''
 def populate_db_from_csv():
 
     # Drop un-interesting columns
@@ -136,6 +152,7 @@ def populate_db_from_csv():
     print "Generating database from csv file: ", config.tab_csv_file, "... ",
     df.to_sql(con=db.get_engine(application), name=config.table_name, flavor=config.db_flavor, if_exists='replace')
     print '.'
+    '''
 
 def create_db():
     db.create_all()
@@ -181,16 +198,120 @@ def describe_site(site):
     plt.xlim(xmin=0, xmax=7)
     month_labels = [datetime.datetime.strftime((datetime.datetime.strptime(config.m1_month_year, "%b %y") +
                                                         relativedelta(months=-(i-1))), "%b %y") for i in index_lst]
-
-    #print month_labels
+    # print month_labels
     plt.xticks(index_lst, month_labels)
     plt.title("Trends for " + site)
-    fig_file = config.fig_dir + 'trend.png'
-    plt.savefig(fig_file)
+    filename = site.replace(" ", "_") + '.png'
+    #print filename
+    plt.savefig(config.fig_dir + '/' + filename)
 
     # Create return info
     #print config.m1_month_year, config.m1_month_year.title()
-    all_accounts = {'primary': primary_accounts, 'other': other_accounts, 'latest_date': config.m1_month_year.title()}
-    return all_accounts
+    return {'primary': primary_accounts, 'other': other_accounts,
+                    'latest_date': config.m1_month_year.title(),
+                    'trend_file': filename}
+
+def lookup_terr(phone):
+    account_list = TerrAssoc.query.filter(TerrAssoc.phone == phone).limit(1).all()
+    #for account in account_list:
+     #   print account.phone, account.territory
+    return account_list
+
+def get_top3_by_phone(phone):
+    territory = lookup_terr(phone)[0].territory
+
+    response = ""
+    for brand_name in config.primary_brands:
+        all_accounts = Monthly.query.filter(and_(Monthly.territory == territory, Monthly.brand_name == brand_name)).order_by(Monthly.r3_growth_value.desc()).limit(3).all()
+        response = response + "%s :" % brand_name
+        for index, account in enumerate(all_accounts):
+            response = response + " %d) %s (growth %s)" % (index+1, account.site, account.r3_growth_value)
+
+    return response
+
+def get_bottom3_by_phone(phone):
+    territory = lookup_terr(phone)[0].territory
+
+    response = ""
+    for brand_name in config.primary_brands:
+        all_accounts = Monthly.query.filter(and_(Monthly.territory == territory, Monthly.brand_name == brand_name)).order_by(Monthly.r3_growth_value.asc()).limit(3).all()
+        response = response + "%s :" % brand_name
+        for index, account in enumerate(all_accounts):
+            response = response + " %d) %s (growth %.1f)" % (index+1, account.site, account.r3_growth_value)
+
+    return response
+
+def find_site_by_territory(phone, site_input):
+    territory = lookup_terr(phone)[0].territory
+
+    sites = Monthly.query.filter(and_(Monthly.territory == territory, Monthly.site.ilike('%'+site_input+'%'))).all()
+    # maybe store these sites in a session?
+    #for site in sites:
+     #   print site.site
+    return sites
+
+def none_float(input):
+    if input is None:
+        return "NA"
+    else:
+        return "%.1f%%" % (input)
+
+
+def describe_site_for_twilio(site):
+    print site
+    plot_dict = {}
+    index_lst = range(1, 7)
+    sms_resp_str = ""
+    date = config.m1_month_year.title()
+
+    # Retrieve primary brands
+    for brand_name in config.primary_brands:
+        accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
+        if len(accounts):
+            account = accounts[0]
+            sms_resp_str = sms_resp_str + \
+                       "%s: " % (brand_name) + \
+                        " terr contrib: " + none_float(account.r6_sales_contrib) + \
+                        ", growth: " + none_float(account.r3_growth_pct) + \
+                        " (%s) " % (date)
+            plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
+                                        account.M4, account.M5, account.M6],
+                                       index=index_lst)
+
+    # Retrieve other brands
+    for brand_name in config.other_brands:
+        accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
+        if len(accounts):
+            account = accounts[0]
+            sms_resp_str = sms_resp_str + \
+                           "%s: " % (brand_name) + \
+                           " terr contrib: " + none_float(account.r6_sales_contrib) + \
+                           ", growth: " + none_float(account.r3_growth_pct) + \
+                           " (%s) " % (date)
+            plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
+                                            account.M4, account.M5, account.M6],
+                                           index=index_lst)
+
+    # Generate trend plot for all brands
+    DataFrame(plot_dict).plot(marker='o')
+    plt.grid()
+    plt.ylabel('Number of Vials')
+    plt.ylim(ymin=0)
+    plt.xlim(xmin=0, xmax=7)
+    month_labels = [datetime.datetime.strftime((datetime.datetime.strptime(config.m1_month_year, "%b %y") +
+                                                relativedelta(months=-(i - 1))), "%b %y") for i in index_lst]
+    # print month_labels
+    plt.xticks(index_lst, month_labels)
+    plt.title("Trends for " + site)
+    filename = site.replace(" ", "_") + '.png'
+    # print filename
+    plt.savefig(config.fig_dir + '/' + filename)
+
+    return {'message': sms_resp_str, 'media': filename}
+
+
+
+
+
 
 
