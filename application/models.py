@@ -9,6 +9,9 @@ import datetime
 from dateutil.relativedelta import relativedelta
 from numpy import nan
 import config
+from flask_kvsession import KVSessionExtension
+from simplekv.db.sql import SQLAlchemyStore
+from sqlalchemy import MetaData
 
 db = SQLAlchemy(application)
 
@@ -18,7 +21,7 @@ class Monthly(db.Model):
     #rank = db.Column('Rank', db.BigInteger)
     territory = db.Column('territory', db.String)
     site = db.Column('site', db.String)
-    #site_id = db.Column('Site ID', db.String)
+    site_id = db.Column('site_id', db.String)
     #affiliations = db.Column('Affiliated Outlets/Physicians', db.String)
     #mdm_id = db.Column('mdm_id', db.String)
     brand_name = db.Column('brand_name', db.String)
@@ -39,10 +42,17 @@ class TerrAssoc(db.Model):
     phone = db.Column('phone', db.BigInteger, primary_key=True)
     territory = db.Column('territory', db.String)
 
+def create_kvsession_store():
+    metadata = MetaData(bind=db.get_engine(application))
+    store = SQLAlchemyStore(db.get_engine(application), metadata, 'kvstore')
+    #print "Not creating kvstore table...."
+    store.table.create(checkfirst=True)
+    KVSessionExtension(store, application)
+
 def populate_db_from_excel():
 
     # Descriptive columns to pick from the DB
-    descriptive_cols = frozenset(['Territory', 'Site', 'Brand Name'])
+    descriptive_cols = frozenset(['Territory', 'Site', 'Site ID', 'Brand Name'])
 
     monthly_data_cols = frozenset(['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12',
                          'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20', 'M21', 'M22', 'M23', 'M24'])
@@ -50,7 +60,7 @@ def populate_db_from_excel():
     relevant_cols = descriptive_cols.union(monthly_data_cols)
 
     df = read_excel(config.excel_file, sheetname=config.monthly_data_excel_sheet,
-                    converters={'Territory':str, 'Site':str, 'Brand Name':str,
+                    converters={'Territory':str, 'Site':str, 'Site ID':str, 'Brand Name':str,
                                 'M1':int, 'M2':int, 'M3':int, 'M4':int, 'M5':int, 'M6':int, 'M7':int, 'M8':int,
                                 'M9':int, 'M10':int, 'M11':int, 'M12':int, 'M13':int, 'M14':int, 'M15':int, 'M16':int,
                                 'M17':int, 'M18':int, 'M19':int, 'M20':int, 'M21': int, 'M22': int, 'M23': int, 'M24': int})
@@ -58,7 +68,7 @@ def populate_db_from_excel():
         if c not in relevant_cols:
             df = df.drop(c, axis=1)
 
-    df.rename(columns={'Territory':'territory', 'Site':'site', 'Brand Name':'brand_name'}, inplace=True)
+    df.rename(columns={'Territory':'territory', 'Site':'site', 'Site ID': 'site_id', 'Brand Name':'brand_name'}, inplace=True)
 
     '''create new columns
         rN_sales: rolling sales over N months
@@ -243,11 +253,15 @@ def get_bottom3_by_phone(phone):
 
 def find_site_by_territory(phone, site_input):
     territory = lookup_terr(phone)[0].territory
+    sites = []
 
-    sites = Monthly.query.filter(and_(Monthly.territory == territory, Monthly.site.ilike('%'+site_input+'%'))).all()
+    for brand_name in config.primary_brands:
+        accounts = Monthly.query.filter(and_(Monthly.territory == territory, Monthly.brand_name == brand_name, Monthly.site.ilike('%'+site_input+'%'))).distinct(Monthly.site_id).all()
+        sites.extend(accounts)
+
     # maybe store these sites in a session?
-    #for site in sites:
-     #   print site.site
+    for site in sites:
+        print site.site, site.site_id, site.brand_name
     return sites
 
 def none_float(input):
@@ -256,6 +270,33 @@ def none_float(input):
     else:
         return "%.1f%%" % (input)
 
+'''
+def describe_one_site_twilio(site):
+    plot_dict = {}
+    index_lst = range(1, 7)
+    sms_resp_str = ""
+    date = config.m1_month_year.title()
+
+    for brand_name in config.primary_brands:
+        sms_resp_str = sms_resp_str + \
+                       "%s: " % (brand_name) + \
+                       " terr contrib: " + none_float(account.r6_sales_contrib) + \
+                       ", growth: " + none_float(account.r3_growth_pct) + \
+                       " (%s) " % (date)
+        plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
+                                    account.M4, account.M5, account.M6],
+                                   index=index_lst)
+
+    for brand_name in config.other_brands:
+        sms_resp_str = sms_resp_str + \
+                       "%s: " % (brand_name) + \
+                       " terr contrib: " + none_float(account.r6_sales_contrib) + \
+                       ", growth: " + none_float(account.r3_growth_pct) + \
+                       " (%s) " % (date)
+        plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
+                                    account.M4, account.M5, account.M6],
+                                   index=index_lst)
+        '''
 
 def describe_site_for_twilio(site):
     print site
