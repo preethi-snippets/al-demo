@@ -1,8 +1,9 @@
 from application import application
-from flask import render_template,redirect, request, send_from_directory, session
+from flask import render_template,redirect, request, send_from_directory, session, url_for
 import models, config
 from time import time
 import twilio.twiml
+from flask_weasyprint import HTML, CSS
 
 @application.route('/')
 def hello_world():
@@ -61,6 +62,14 @@ def create_session(from_phone, sites):
     print "created..... " + from_phone, session[from_phone], site_dict[2].site
     return resp
 
+def generate_png(site, site_info):
+
+    html = render_template('describe_report.html', r=site_info)
+    filename = site.replace(" ", "_") + '_report.png'
+    HTML(string=html).write_png(config.fig_dir + filename, stylesheets=[CSS(url_for('static', filename='report.css'))])
+    return filename
+
+
 @application.route('/al-twilio', methods=['GET', 'POST'])
 def parse_twilio():
 
@@ -69,7 +78,7 @@ def parse_twilio():
     keywords = ['help','top3', 'bottom3', 'describe']
     from_phone = "+15129638448"
     #words = ['d', 'west']
-    words = ['3']
+    words = ['5']
     #from_phone = request.form.get('From')
     #words = request.form.get('Body').lower().split(' ')
     keyword = words[0]
@@ -92,8 +101,9 @@ def parse_twilio():
             response.message("No matches")
         elif (len(sites) == 1):
             site_info = models.describe_site_for_twilio(sites[0].site)
+            report_file = generate_png(sites[0].site,site_info)
             with response.message(site_info['message']) as m:
-                m.media('/trend_figures/' + site_info['media'])
+                m.media('/trend_figures/' + report_file)
         elif (1 < len(sites) > 5):
             response.message("Multiple matches" + create_session(lookup_phone, sites))
 
@@ -101,12 +111,14 @@ def parse_twilio():
         # retrieve site from phone's session
         site_dict = session[lookup_phone]
         site_info = models.describe_site_for_twilio(site_dict[int(keyword)].site)
+        report_file = generate_png(site_dict[int(keyword)].site, site_info)
         with response.message(site_info['message']) as m:
-            m.media('/trend_figures/' + site_info['media'])
+            m.media('/trend_figures/' + report_file)
     else:
         response.message(invalid_keyword_message + ' '.join(keywords))
 
     return (str(response))
+
 
 @application.route('/session-test', methods = ['GET', 'POST'])
 def session_test():
@@ -116,3 +128,13 @@ def session_test():
     print "lookup.... " + from_phone, site_dict[index].site
     return (str(site_dict))
     #return (str(counter))
+
+@application.after_request
+def add_header(response):
+    """
+    Add headers to both force latest IE rendering engine or Chrome Frame,
+    and also to cache the rendered page for 10 minutes.
+    """
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['Pragma'] = 'no-cache'
+    return response

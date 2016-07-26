@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+    <head>
+
+        <TITLE>Report for {{r['site']}} </TITLE>
+        <META CHARSET="UTF-8" />
+        <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='report.css') }}" />
+    </head>
+    <body>
+
+        <div class="a0">
+           <h1>  Report for {{r['site']}} ({{r['date']}}) </h1>
+            </div>
+           <div class="VerticalSpace"></div>
+        <div class="a1">
+            <table>
+            <tbody>
+            <tr>
+                <td>Name</td>
+                <td>{{r['site']}}</td>
+            </tr>
+            <tr>
+                <td>Address</td>
+                <td>{{r['site_address']}}</td>
+            </tr>
+            <tr>
+                <td>City, State</td>
+                <td>{{r['site_city']}}, {{r['site_state']}}, {{r['site_zip']}}</td>
+            </tr>
+            </tbody>
+            </table>
+        </div>
+        <div class="VerticalSpace"></div>
+        <div class="a2">
+            <div class="image">
+                <img src="{{ url_for('retrieve_trend_image', filename=r['sales_media']) }}" >
+            </div>
+        </div>
+        <div class="a3">
+            <div class="image">
+            <img src="{{ url_for('retrieve_trend_image', filename=r['growth_media']) }}" >
+            </div>
+        </div>
+        <div class="VerticalSpace"></div>
+        <div class="a4">
+            <div class="image">
+            <img src="{{ url_for('retrieve_trend_image', filename=r['bubble_media']) }}" >
+            </div>
+        </div>
+
+    </body>
+</html>

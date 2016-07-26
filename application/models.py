@@ -5,6 +5,7 @@ from pandas import read_excel, read_table, Series, DataFrame
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 import datetime
 from dateutil.relativedelta import relativedelta
 from numpy import nan
@@ -24,11 +25,20 @@ class Monthly(db.Model):
     site_id = db.Column('site_id', db.String)
     #affiliations = db.Column('Affiliated Outlets/Physicians', db.String)
     #mdm_id = db.Column('mdm_id', db.String)
+    address = db.Column('address', db.String)
+    city = db.Column('city', db.String)
+    state = db.Column('state', db.String)
+    zip = db.Column('zip', db.String)
     brand_name = db.Column('brand_name', db.String)
+
     r6_sales = db.Column('r6_sales', db.Integer)
-    r3_growth_value = db.Column('r3_growth_value', db.Integer)
     r6_sales_contrib = db.Column('r6_sales_contrib', db.Float)
+    r3_growth_value = db.Column('r3_growth_value', db.Integer)
+
     r3_growth_pct = db.Column('r3_growth_pct', db.Float)
+    r6_growth_pct = db.Column('r6_growth_pct', db.Float)
+    r12_growth_pct = db.Column('r12_growth_pct', db.Float)
+
     M1 = db.Column('M1', db.Integer)
     M2 = db.Column('M2', db.Integer)
     M3 = db.Column('M3', db.Integer)
@@ -52,67 +62,54 @@ def create_kvsession_store():
 def populate_db_from_excel():
 
     # Descriptive columns to pick from the DB
-    descriptive_cols = frozenset(['Territory', 'Site', 'Site ID', 'Brand Name'])
+    descriptive_cols = frozenset(['Territory', 'Site', 'Site ID', 'Brand Name',
+                                  'Address', 'City', 'State', 'Zip'])
 
     monthly_data_cols = frozenset(['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12',
                          'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20', 'M21', 'M22', 'M23', 'M24'])
 
-    relevant_cols = descriptive_cols.union(monthly_data_cols)
-
     df = read_excel(config.excel_file, sheetname=config.monthly_data_excel_sheet,
                     converters={'Territory':str, 'Site':str, 'Site ID':str, 'Brand Name':str,
+                                'Address': str, 'City': str, 'State': str, 'Zip': str,
                                 'M1':int, 'M2':int, 'M3':int, 'M4':int, 'M5':int, 'M6':int, 'M7':int, 'M8':int,
                                 'M9':int, 'M10':int, 'M11':int, 'M12':int, 'M13':int, 'M14':int, 'M15':int, 'M16':int,
                                 'M17':int, 'M18':int, 'M19':int, 'M20':int, 'M21': int, 'M22': int, 'M23': int, 'M24': int})
+
+    print df.head
+
+    relevant_cols = descriptive_cols.union(monthly_data_cols)
+
     for c in df.columns:
         if c not in relevant_cols:
             df = df.drop(c, axis=1)
 
-    df.rename(columns={'Territory':'territory', 'Site':'site', 'Site ID': 'site_id', 'Brand Name':'brand_name'}, inplace=True)
+    df.rename(columns={'Territory':'territory', 'Site':'site', 'Site ID': 'site_id', 'Brand Name':'brand_name',
+                       'Address':'address', 'City':'city', 'State':'state', 'Zip':'zip'}, inplace=True)
 
     '''create new columns
         rN_sales: rolling sales over N months
         pN_sales: rolling sales over previous N months
     '''
-    if 1 in config.rN_sales:
-        df['r1_sales'] = df['M1']
-        df['p1_sales'] = df['M2']
 
-    if 3 in config.rN_sales:
+    if 3 in config.rN_growth:
         df['r3_sales'] = df['M1'] + df['M2'] + df['M3']
         df['p3_sales'] = df['M4'] + df['M5'] + df['M6']
+        df['r3_growth_value'] = df['r3_sales'] - df['p3_sales']
+        df['r3_growth_pct'] = df['r3_growth_value'] * 100.0 / df['p3_sales'].replace({0: nan})
+        df = df.drop(['r3_sales', 'p3_sales'], axis=1)
 
-    if 6 in config.rN_sales:
+    if 6 in config.rN_growth:
         df['r6_sales'] = df['M1'] + df['M2'] + df['M3'] + df['M4'] + df['M5'] + df['M6']
         df['p6_sales'] = df['M7'] + df['M8'] + df['M9'] + df['M10'] + df['M11'] + df['M12']
-
-    if 12 in config.rN_sales:
-        df['r12_sales'] = df['M1'] + df['M2'] + df['M3'] + df['M4'] + df['M5'] + df['M6'] + df['M7'] + df['M8'] + df['M9'] + df['M10'] + df['M11'] + df['M12']
-        df['p12_sales'] = df['M13'] + df['M14'] + df['M15'] + df['M16'] + df['M17'] + df['M18'] + df['M19'] + df['M20'] + df['M21'] + df['M22'] + df['M23'] + df['M24']
-
-    '''
-    rN_growth_value: growth amount between current and previous rolling sales
-    '''
-    if 3 in config.rN_growth_value:
-        df['r3_growth_value'] = df['r3_sales'] - df['p3_sales']
-
-    if 6 in config.rN_growth_value:
         df['r6_growth_value'] = df['r6_sales'] - df['p6_sales']
-
-    if 12 in config.rN_growth_value:
-        df['r12_growth_value'] = df['r12_sales'] - df['p12_sales']
-
-    ''' rN_growth_pct: rN_growth_value * 100 / pN_sales
-        if pN_sales == 0, then NaN
-    '''
-    if 3 in config.rN_growth_pct:
-        df['r3_growth_pct'] = df['r3_growth_value'] * 100.0 / df['p3_sales'].replace({0: nan})
-
-    if 6 in config.rN_growth_pct:
         df['r6_growth_pct'] = df['r6_growth_value'] * 100.0 / df['p6_sales'].replace({0: nan})
 
-    if 12 in config.rN_growth_pct:
+    if 12 in config.rN_growth:
+        df['r12_sales'] = df['M1'] + df['M2'] + df['M3'] + df['M4'] + df['M5'] + df['M6'] + df['M7'] + df['M8'] + df['M9'] + df['M10'] + df['M11'] + df['M12']
+        df['p12_sales'] = df['M13'] + df['M14'] + df['M15'] + df['M16'] + df['M17'] + df['M18'] + df['M19'] + df['M20'] + df['M21'] + df['M22'] + df['M23'] + df['M24']
+        df['r12_growth_value'] = df['r12_sales'] - df['p12_sales']
         df['r12_growth_pct'] = df['r12_growth_value'] * 100.0 / df['p12_sales'].replace({0: nan})
+        df = df.drop(['r12_sales', 'p12_sales'], axis=1)
 
     # Once crunched, monthly sales data need not be stored in DB
     months_to_discard = list(set(monthly_data_cols) - config.months_to_store)
@@ -201,7 +198,7 @@ def describe_site(site):
                                        index=index_lst)
 
     # Generate trend plot for all brands
-    DataFrame(plot_dict).plot(marker='o')
+    DataFrame(plot_dict).plot(marker='.')
     plt.grid()
     plt.ylabel('Number of Vials')
     plt.ylim(ymin=0)
@@ -301,7 +298,11 @@ def describe_one_site_twilio(site):
 def describe_site_for_twilio(site):
     print site
     plot_dict = {}
+    bubble_plot = {}
+    r_growth_pct = {}
     index_lst = range(1, 7)
+    sales_index = ['R3', 'R6', 'R12']
+    bubble_index = ['R3 Growth', 'R3 Growth Pct', 'R6 Sales']
     sms_resp_str = ""
     date = config.m1_month_year.title()
 
@@ -318,6 +319,10 @@ def describe_site_for_twilio(site):
             plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
                                         account.M4, account.M5, account.M6],
                                        index=index_lst)
+            r_growth_pct[brand_name] = Series([account.r3_growth_pct, account.r6_growth_pct, account.r12_growth_pct],
+                                         index=sales_index)
+            bubble_plot[brand_name] = Series([account.r3_growth_value, account.r3_growth_pct, account.r6_sales],
+                                             index=bubble_index)
 
     # Retrieve other brands
     for brand_name in config.other_brands:
@@ -332,23 +337,87 @@ def describe_site_for_twilio(site):
             plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
                                             account.M4, account.M5, account.M6],
                                            index=index_lst)
+            r_growth_pct[brand_name] = Series([account.r3_growth_pct, account.r6_growth_pct, account.r12_growth_pct],
+                                              index=sales_index)
+            bubble_plot[brand_name] = Series([account.r3_growth_value, account.r3_growth_pct, account.r6_sales],
+                                             index=bubble_index)
 
-    # Generate trend plot for all brands
-    DataFrame(plot_dict).plot(marker='o')
-    plt.grid()
-    plt.ylabel('Number of Vials')
+    # Generate sales trend plot for all brands
+    plt.style.use('ggplot')
+    DataFrame(plot_dict).plot(marker='.', figsize=(3.5, 3), fontsize=1)
+    plt.grid(True)
+    #plt.ylabel('Number of Vials', fontsize=6)
     plt.ylim(ymin=0)
     plt.xlim(xmin=0, xmax=7)
     month_labels = [datetime.datetime.strftime((datetime.datetime.strptime(config.m1_month_year, "%b %y") +
                                                 relativedelta(months=-(i - 1))), "%b %y") for i in index_lst]
     # print month_labels
-    plt.xticks(index_lst, month_labels)
-    plt.title("Trends for " + site)
-    filename = site.replace(" ", "_") + '.png'
+    plt.xticks(index_lst, month_labels, fontsize=6.5)
+    plt.yticks(fontsize=6.5)
+    plt.title("Sales Trends", fontsize=8)
+    plt.legend(prop={'size':6})
+    plt.tick_params(length=0)
+    #fig = plt.figure(figsize=[3, 5], dpi=200)
+    sales_trend_filename = site.replace(" ", "_") + '_sales_trend.png'
     # print filename
-    plt.savefig(config.fig_dir + '/' + filename)
+    plt.savefig(config.fig_dir + '/' + sales_trend_filename)
 
-    return {'message': sms_resp_str, 'media': filename}
+    # Generate growth trend chart for all brands
+    df = DataFrame(r_growth_pct).fillna(0)
+    #print df
+    #print df.index
+    #print list(df.index)
+    plt.style.use('ggplot')
+    df.plot.bar(figsize=(3.5, 3))
+    plt.grid(True)
+    plt.xticks(fontsize=6.5,rotation='horizontal')
+    plt.yticks(fontsize=6.5)
+    plt.gca().get_yaxis().set_major_formatter(FormatStrFormatter('%d%%'))
+    plt.tick_params(length=0)
+    plt.title('Growth Trends', fontsize=8)
+    plt.legend(prop={'size': 6})
+    growth_trend_filename = site.replace(" ", "_") + '_growth_trend.png'
+    # print filename
+    plt.savefig(config.fig_dir + '/' + growth_trend_filename)
+
+    # Generate bubble chart for all brands
+    df = DataFrame(bubble_plot).T.fillna(0)
+    # print df
+    # print df.index
+    # print list(df.index)
+    plt.style.use('ggplot')
+    df.plot.scatter(x='R3 Growth', y='R3 Growth Pct', s=df['R6 Sales'] * 0.5, figsize=(6.5, 2.5), alpha=0.5)
+    plt.grid(True)
+    plt.ylabel('R3 Growth Pct', fontsize=6.5)
+    plt.xlabel('R3 Growth Value', fontsize=6.5)
+    plt.xticks(fontsize=6.5)
+    plt.yticks(fontsize=6.5)
+    plt.gca().get_yaxis().set_major_formatter(FormatStrFormatter('%d%%'))
+    plt.tick_params(length=0)
+    # biggest_bubble = df['R6 Sales'].max()/2
+    # print biggest_bubble
+    # plt.ylim(ymin=(df['R3 Growth Pct'].min() - biggest_bubble), ymax=df['R3 Growth Pct'].max() + biggest_bubble)
+    # plt.xlim(xmin=(df['R3 Growth'].min() - biggest_bubble), xmax=df['R3 Growth'].max() + biggest_bubble)
+    plt.title('Relative Growth vs. Absolute Growth', fontsize=8)
+    for i, txt in enumerate(list(df.index)):
+        # print i, df['R3 Growth'][i], df['R3 Growth Pct'][i], txt
+        plt.text(df['R3 Growth'][i], df['R3 Growth Pct'][i], txt, fontsize=5, horizontalalignment='center')
+
+    bubble_chart_filename = site.replace(" ", "_") + '_bubble.png'
+    # print filename
+    plt.savefig(config.fig_dir + '/' + bubble_chart_filename)
+
+    return {'message': sms_resp_str,
+            'site': site,
+            'site_address': account.address,
+            'date': config.m1_month_year.title(),
+            'site_city': account.city,
+            'site_state': account.state,
+            'site_zip': account.zip,
+            'media': sales_trend_filename,
+            'sales_media': sales_trend_filename,
+            'growth_media': growth_trend_filename,
+            'bubble_media': bubble_chart_filename}
 
 
 

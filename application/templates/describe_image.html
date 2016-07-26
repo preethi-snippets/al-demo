@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <title>Lookup by Site</title>
+        <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+    </head>
+    <body>
+
+<section>
+<h1>Describe results for {{site}}</h1>
+<div class="paragraph" />
+    <h2> SMS response string: </h2>
+    <p> {{ sms_resp_string }} </p>
+</div>
+
+<div>
+    <img src="{{ url_for('retrieve_trend_image', filename=pngfile) }}" width="50px" height="50px" >
+    </div>
+</section>
+
+   </body>
