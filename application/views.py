@@ -53,22 +53,62 @@ def retrieve_trend_image(filename):
     return send_from_directory(config.fig_dir, filename)
 
 def create_session(from_phone, sites):
-    resp = ''
+    resp = []
     site_dict = {}
+    resp.append("Multiple matches: ")
     for (index, site) in enumerate(sites):
-        resp = resp + "%d) %s " % (index+1, site.site)
+        resp.append("%d) %s (%s) " % (index+1, site.site, site.zip))
         site_dict[index+1] = site
     session[from_phone] = site_dict
-    print "created..... " + from_phone, session[from_phone], site_dict[2].site
+    print "Session created for " + from_phone
+    #print resp
     return resp
 
-def generate_png(site, site_info):
+def build_twilio_message(msg_list, response):
 
+    cur_len = 0
+    num_msgs = 1
+    for msg in msg_list:
+        if ((cur_len + len(msg)) < 155):
+            cur_len += len(msg)
+        else:
+            num_msgs += 1
+            cur_len = len(msg)
+
+    #print num_msgs
+    index = 1
+    if (num_msgs > 1):
+        cur_msg = "%d/%d: " % (index, num_msgs)
+    else:
+        cur_msg = ''
+    for msg in msg_list:
+        if ((len(cur_msg) + len(msg)) < 155):
+            cur_msg = cur_msg + msg
+        else:
+            print cur_msg
+            response.message(cur_msg)
+            index += 1;
+            cur_msg = "%d/%d: " % (index, num_msgs)
+            cur_msg = cur_msg + msg
+
+    response.message(cur_msg)
+    #print response
+    return response
+
+def generate_report(site, response):
+
+    site_info = models.describe_site_for_twilio(site)
     html = render_template('describe_report.html', r=site_info)
-    filename = site.replace(" ", "_") + '_report.png'
-    HTML(string=html).write_png(config.fig_dir + filename, stylesheets=[CSS(url_for('static', filename='report.css'))])
-    return filename
+    report_file = site.replace(" ", "_") + '_report.png'
+    HTML(string=html).write_png(config.fig_dir + report_file, stylesheets=[CSS(url_for('static', filename='report.css'))],
+                                resolution=200)
 
+    # with response.message(site_info['message']) as m:
+    #   m.media('/trend_figures/' + report_file)
+    response.message(site_info['message'])
+    response.message('').append(twilio.twiml.Media('/trend_figures/' + report_file))
+
+    return response
 
 @application.route('/al-twilio', methods=['GET', 'POST'])
 def parse_twilio():
@@ -77,8 +117,8 @@ def parse_twilio():
     invalid_keyword_message = "Sorry, please try one from these: "
     keywords = ['help','top3', 'bottom3', 'describe']
     from_phone = "+15129638448"
-    #words = ['d', 'west']
-    words = ['5']
+    #words = ['d', 'boston']
+    words = ['4']
     #from_phone = request.form.get('From')
     #words = request.form.get('Body').lower().split(' ')
     keyword = words[0]
@@ -96,24 +136,18 @@ def parse_twilio():
         response.message("Bottom 3 for " + models.get_bottom3_by_phone(lookup_phone))
 
     elif (keyword == 'describe' or keyword.startswith('d')):
-        sites = models.find_site_by_territory(from_phone, words[1])
+        sites = models.find_site_by_territory(lookup_phone, words[1])
         if (len(sites) == 0):
             response.message("No matches")
         elif (len(sites) == 1):
-            site_info = models.describe_site_for_twilio(sites[0].site)
-            report_file = generate_png(sites[0].site,site_info)
-            with response.message(site_info['message']) as m:
-                m.media('/trend_figures/' + report_file)
-        elif (1 < len(sites) > 5):
-            response.message("Multiple matches" + create_session(lookup_phone, sites))
+            response = generate_report(sites[0].site, response)
+        else:
+            response = build_twilio_message(create_session(lookup_phone, sites), response)
 
     elif (1 <= int(keyword) <= 20):
         # retrieve site from phone's session
         site_dict = session[lookup_phone]
-        site_info = models.describe_site_for_twilio(site_dict[int(keyword)].site)
-        report_file = generate_png(site_dict[int(keyword)].site, site_info)
-        with response.message(site_info['message']) as m:
-            m.media('/trend_figures/' + report_file)
+        response = generate_report(site_dict[int(keyword)].site, response)
     else:
         response.message(invalid_keyword_message + ' '.join(keywords))
 
@@ -127,13 +161,11 @@ def session_test():
     site_dict = session[from_phone]
     print "lookup.... " + from_phone, site_dict[index].site
     return (str(site_dict))
-    #return (str(counter))
 
 @application.after_request
 def add_header(response):
     """
-    Add headers to both force latest IE rendering engine or Chrome Frame,
-    and also to cache the rendered page for 10 minutes.
+    Dont cache any response
     """
     response.headers['Cache-Control'] = 'no-cache'
     response.headers['Pragma'] = 'no-cache'

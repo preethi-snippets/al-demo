@@ -55,7 +55,6 @@ class TerrAssoc(db.Model):
 def create_kvsession_store():
     metadata = MetaData(bind=db.get_engine(application))
     store = SQLAlchemyStore(db.get_engine(application), metadata, 'kvstore')
-    #print "Not creating kvstore table...."
     store.table.create(checkfirst=True)
     KVSessionExtension(store, application)
 
@@ -303,8 +302,8 @@ def describe_site_for_twilio(site):
     index_lst = range(1, 7)
     sales_index = ['R3', 'R6', 'R12']
     bubble_index = ['R3 Growth', 'R3 Growth Pct', 'R6 Sales']
-    sms_resp_str = ""
     date = config.m1_month_year.title()
+    sms_resp_str = "As of %s --" % (date)
 
     # Retrieve primary brands
     for brand_name in config.primary_brands:
@@ -312,10 +311,9 @@ def describe_site_for_twilio(site):
         if len(accounts):
             account = accounts[0]
             sms_resp_str = sms_resp_str + \
-                       "%s: " % (brand_name) + \
-                        " terr contrib: " + none_float(account.r6_sales_contrib) + \
-                        ", growth: " + none_float(account.r3_growth_pct) + \
-                        " (%s) " % (date)
+                       " %s: " % (brand_name) + \
+                        " contrib: " + none_float(account.r6_sales_contrib) + \
+                        ", growth: " + none_float(account.r3_growth_pct)
             plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
                                         account.M4, account.M5, account.M6],
                                        index=index_lst)
@@ -330,10 +328,9 @@ def describe_site_for_twilio(site):
         if len(accounts):
             account = accounts[0]
             sms_resp_str = sms_resp_str + \
-                           "%s: " % (brand_name) + \
-                           " terr contrib: " + none_float(account.r6_sales_contrib) + \
-                           ", growth: " + none_float(account.r3_growth_pct) + \
-                           " (%s) " % (date)
+                           " %s: " % (brand_name) + \
+                           " contrib: " + none_float(account.r6_sales_contrib) + \
+                           ", growth: " + none_float(account.r3_growth_pct)
             plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
                                             account.M4, account.M5, account.M6],
                                            index=index_lst)
@@ -342,9 +339,10 @@ def describe_site_for_twilio(site):
             bubble_plot[brand_name] = Series([account.r3_growth_value, account.r3_growth_pct, account.r6_sales],
                                              index=bubble_index)
 
+    print "size of sms : ", len(sms_resp_str)
     # Generate sales trend plot for all brands
     plt.style.use('ggplot')
-    DataFrame(plot_dict).plot(marker='.', figsize=(3.5, 3), fontsize=1)
+    DataFrame(plot_dict).plot(marker='.', figsize=(3, 2.5), fontsize=1)
     plt.grid(True)
     #plt.ylabel('Number of Vials', fontsize=6)
     plt.ylim(ymin=0)
@@ -368,7 +366,7 @@ def describe_site_for_twilio(site):
     #print df.index
     #print list(df.index)
     plt.style.use('ggplot')
-    df.plot.bar(figsize=(3.5, 3))
+    df.plot.bar(figsize=(3, 2.5))
     plt.grid(True)
     plt.xticks(fontsize=6.5,rotation='horizontal')
     plt.yticks(fontsize=6.5)
@@ -386,7 +384,7 @@ def describe_site_for_twilio(site):
     # print df.index
     # print list(df.index)
     plt.style.use('ggplot')
-    df.plot.scatter(x='R3 Growth', y='R3 Growth Pct', s=df['R6 Sales'] * 0.5, figsize=(6.5, 2.5), alpha=0.5)
+    df.plot.scatter(x='R3 Growth', y='R3 Growth Pct', s=df['R6 Sales'] * 0.75, figsize=(6, 2.5), alpha=0.5)
     plt.grid(True)
     plt.ylabel('R3 Growth Pct', fontsize=6.5)
     plt.xlabel('R3 Growth Value', fontsize=6.5)
@@ -410,7 +408,7 @@ def describe_site_for_twilio(site):
     return {'message': sms_resp_str,
             'site': site,
             'site_address': account.address,
-            'date': config.m1_month_year.title(),
+            'date': date,
             'site_city': account.city,
             'site_state': account.state,
             'site_zip': account.zip,
