@@ -15,6 +15,8 @@ fig_dir = application_dir + '/trend_images/'
 primary_brands = frozenset(['AVASTIN'])
 other_brands = frozenset(['VECTIBIX', 'ERBITUX'])
 m1_month_year = "Jan 16"
+monthly_data_cols = frozenset(['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12',
+                               'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20', 'M21', 'M22', 'M23', 'M24'])
 months_to_store = frozenset(['M1', 'M2', 'M3', 'M4', 'M5', 'M6'])
 rN_growth = frozenset([3, 6, 12])
 secret_key = 'my secret key'

@@ -58,33 +58,7 @@ def create_kvsession_store():
     store.table.create(checkfirst=True)
     KVSessionExtension(store, application)
 
-def populate_db_from_excel():
-
-    # Descriptive columns to pick from the DB
-    descriptive_cols = frozenset(['Territory', 'Site', 'Site ID', 'Brand Name',
-                                  'Address', 'City', 'State', 'Zip'])
-
-    monthly_data_cols = frozenset(['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12',
-                         'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20', 'M21', 'M22', 'M23', 'M24'])
-
-    df = read_excel(config.excel_file, sheetname=config.monthly_data_excel_sheet,
-                    converters={'Territory':str, 'Site':str, 'Site ID':str, 'Brand Name':str,
-                                'Address': str, 'City': str, 'State': str, 'Zip': str,
-                                'M1':int, 'M2':int, 'M3':int, 'M4':int, 'M5':int, 'M6':int, 'M7':int, 'M8':int,
-                                'M9':int, 'M10':int, 'M11':int, 'M12':int, 'M13':int, 'M14':int, 'M15':int, 'M16':int,
-                                'M17':int, 'M18':int, 'M19':int, 'M20':int, 'M21': int, 'M22': int, 'M23': int, 'M24': int})
-
-    print df.head
-
-    relevant_cols = descriptive_cols.union(monthly_data_cols)
-
-    for c in df.columns:
-        if c not in relevant_cols:
-            df = df.drop(c, axis=1)
-
-    df.rename(columns={'Territory':'territory', 'Site':'site', 'Site ID': 'site_id', 'Brand Name':'brand_name',
-                       'Address':'address', 'City':'city', 'State':'state', 'Zip':'zip'}, inplace=True)
-
+def create_sales_table(df):
     '''create new columns
         rN_sales: rolling sales over N months
         pN_sales: rolling sales over previous N months
@@ -104,41 +78,84 @@ def populate_db_from_excel():
         df['r6_growth_pct'] = df['r6_growth_value'] * 100.0 / df['p6_sales'].replace({0: nan})
 
     if 12 in config.rN_growth:
-        df['r12_sales'] = df['M1'] + df['M2'] + df['M3'] + df['M4'] + df['M5'] + df['M6'] + df['M7'] + df['M8'] + df['M9'] + df['M10'] + df['M11'] + df['M12']
-        df['p12_sales'] = df['M13'] + df['M14'] + df['M15'] + df['M16'] + df['M17'] + df['M18'] + df['M19'] + df['M20'] + df['M21'] + df['M22'] + df['M23'] + df['M24']
+        df['r12_sales'] = df['M1'] + df['M2'] + df['M3'] + df['M4'] + df['M5'] + df['M6'] + df['M7'] + df['M8'] + df[
+            'M9'] + df['M10'] + df['M11'] + df['M12']
+        df['p12_sales'] = df['M13'] + df['M14'] + df['M15'] + df['M16'] + df['M17'] + df['M18'] + df['M19'] + df[
+            'M20'] + df['M21'] + df['M22'] + df['M23'] + df['M24']
         df['r12_growth_value'] = df['r12_sales'] - df['p12_sales']
         df['r12_growth_pct'] = df['r12_growth_value'] * 100.0 / df['p12_sales'].replace({0: nan})
         df = df.drop(['r12_sales', 'p12_sales'], axis=1)
 
     # Once crunched, monthly sales data need not be stored in DB
-    months_to_discard = list(set(monthly_data_cols) - config.months_to_store)
+    months_to_discard = list(config.monthly_data_cols - config.months_to_store)
     print months_to_discard
     for c in df.columns:
         if c in months_to_discard:
-          df = df.drop(c, axis=1)
+            df = df.drop(c, axis=1)
 
     '''sales_contrib: how much the site contributed towards the brand's territory sales
     '''
     # Groupby brand_name, territory, find sum, and create a dictionary from the df for easy lookup
-    sum_dict = df[['brand_name', 'territory', 'r6_sales']].groupby(['brand_name', 'territory'], sort=False).sum().to_dict()['r6_sales']
+    sum_dict = \
+    df[['brand_name', 'territory', 'r6_sales']].groupby(['brand_name', 'territory'], sort=False).sum().to_dict()[
+        'r6_sales']
 
     # create new column by dividing sales by sum for (brand,territory)
-    df['r6_sales_contrib'] = df.apply(lambda row: row['r6_sales'] * 100.0 / sum_dict[(row['brand_name'], row['territory'])], axis = 1)
+    df['r6_sales_contrib'] = df.apply(
+        lambda row: row['r6_sales'] * 100.0 / sum_dict[(row['brand_name'], row['territory'])], axis=1)
 
     print df.head()
     print "Generating database from excel sheet: ", config.monthly_data_excel_sheet, "... ",
-    df.to_sql(con=db.get_engine(application), name=config.monthly_data_table_name, flavor=config.db_flavor, if_exists='replace')
+    df.to_sql(con=db.get_engine(application), name=config.monthly_data_table_name, flavor=config.db_flavor,
+              if_exists='replace')
     print '.'
 
+def create_terr_assoc_table():
     df = read_excel(config.excel_file, sheetname=config.terr_assoc_excel_sheet,
                     converters={'Phone': int, 'Territory': str})
+
 
     df.rename(columns={'Phone': 'phone', 'Territory': 'territory'}, inplace=True)
 
     print df.head()
     print "Generating database from excel sheet: ", config.terr_assoc_excel_sheet, "... ",
-    df.to_sql(con=db.get_engine(application), name=config.terr_assoc_table_name, flavor=config.db_flavor, if_exists='replace')
+    df.to_sql(con=db.get_engine(application), name=config.terr_assoc_table_name, flavor=config.db_flavor,
+              if_exists='replace')
     print '.'
+
+
+def read_excel_format_1():
+
+    # Descriptive columns to pick from the DB
+    descriptive_cols = frozenset(['Territory', 'Site', 'Site ID', 'Brand Name',
+                                  'Address', 'City', 'State', 'Zip'])
+
+    df = read_excel(config.excel_file, sheetname=config.monthly_data_excel_sheet,
+                    converters={'Territory':str, 'Site':str, 'Site ID':str, 'Brand Name':str,
+                                'Address': str, 'City': str, 'State': str, 'Zip': str,
+                                'M1':int, 'M2':int, 'M3':int, 'M4':int, 'M5':int, 'M6':int, 'M7':int, 'M8':int,
+                                'M9':int, 'M10':int, 'M11':int, 'M12':int, 'M13':int, 'M14':int, 'M15':int, 'M16':int,
+                                'M17':int, 'M18':int, 'M19':int, 'M20':int, 'M21': int, 'M22': int, 'M23': int, 'M24': int})
+
+    print df.head
+
+    relevant_cols = descriptive_cols.union(config.monthly_data_cols)
+
+    for c in df.columns:
+        if c not in relevant_cols:
+            df = df.drop(c, axis=1)
+
+    df.rename(columns={'Territory':'territory', 'Site':'site', 'Site ID': 'site_id', 'Brand Name':'brand_name',
+                       'Address':'address', 'City':'city', 'State':'state', 'Zip':'zip'}, inplace=True)
+
+    return df
+
+
+def create_and_populate_tables():
+    df = read_excel_format_1()
+    create_sales_table(df)
+    create_terr_assoc_table()
+
 
 '''
 def populate_db_from_csv():
@@ -162,7 +179,7 @@ def populate_db_from_csv():
 
 def create_db():
     db.create_all()
-    populate_db_from_excel()
+    create_and_populate_tables()
 
 def get_top_3_by_territory(territory, brand_name):
     all_accounts = Monthly.query.filter(and_(Monthly.territory==territory, Monthly.brand_name==brand_name)).order_by(Monthly.r3_growth_value.desc()).limit(3).all()

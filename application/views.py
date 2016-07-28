@@ -117,8 +117,8 @@ def parse_twilio():
     invalid_keyword_message = "Sorry, please try one from these: "
     keywords = ['help','top3', 'bottom3', 'describe']
     from_phone = "+15129638448"
-    #words = ['d', 'boston']
-    words = ['4']
+    #words = ['d', 'west']
+    words = ['5']
     #from_phone = request.form.get('From')
     #words = request.form.get('Body').lower().split(' ')
     keyword = words[0]
