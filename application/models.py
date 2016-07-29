@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from application import application
 from sqlalchemy.sql.expression import and_
-from pandas import read_excel, read_table, Series, DataFrame
+from pandas import read_excel, read_table, Series, DataFrame, concat, MultiIndex, to_numeric
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
@@ -17,7 +17,7 @@ from sqlalchemy import MetaData
 db = SQLAlchemy(application)
 
 class Monthly(db.Model):
-    __tablename__ = config.monthly_data_table_name
+    __tablename__ = config.sales_data_table_name
     index = db.Column('index', db.BigInteger, primary_key=True)
     #rank = db.Column('Rank', db.BigInteger)
     territory = db.Column('territory', db.String)
@@ -31,20 +31,24 @@ class Monthly(db.Model):
     zip = db.Column('zip', db.String)
     brand_name = db.Column('brand_name', db.String)
 
-    r6_sales = db.Column('r6_sales', db.Integer)
-    r6_sales_contrib = db.Column('r6_sales_contrib', db.Float)
-    r3_growth_value = db.Column('r3_growth_value', db.Integer)
-
-    r3_growth_pct = db.Column('r3_growth_pct', db.Float)
-    r6_growth_pct = db.Column('r6_growth_pct', db.Float)
-    r12_growth_pct = db.Column('r12_growth_pct', db.Float)
-
     M1 = db.Column('M1', db.Integer)
     M2 = db.Column('M2', db.Integer)
     M3 = db.Column('M3', db.Integer)
     M4 = db.Column('M4', db.Integer)
     M5 = db.Column('M5', db.Integer)
     M6 = db.Column('M6', db.Integer)
+
+    r6_sales = db.Column('r6_sales', db.Integer)
+    r6_sales_contrib = db.Column('r6_sales_contrib', db.Float)
+    r3_growth_value = db.Column('r3_growth_value', db.Integer)
+    r3_growth_pct = db.Column('r3_growth_pct', db.Float)
+
+    if 6 in config.rN_growth:
+        r6_growth_pct = db.Column('r6_growth_pct', db.Float)
+
+    if 12 in config.rN_growth:
+        r12_growth_pct = db.Column('r12_growth_pct', db.Float)
+
 
 class TerrAssoc(db.Model):
     __tablename__ = config.terr_assoc_table_name
@@ -59,23 +63,37 @@ def create_kvsession_store():
     KVSessionExtension(store, application)
 
 def create_sales_table(df):
+
+    '''sales_contrib: how much the site contributed towards the brand's territory sales based on rolling 6 months sales
+     '''
+
+    df['r6_sales'] = df['M1'] + df['M2'] + df['M3'] + df['M4'] + df['M5'] + df['M6']
+
+    # Groupby brand_name, territory, find sum, and create a dictionary from the df for easy lookup
+    sum_dict = \
+        df[['brand_name', 'territory', 'r6_sales']].groupby(['brand_name', 'territory'], sort=False).sum().to_dict()[
+            'r6_sales']
+
+    # create new column by dividing sales by sum for (brand,territory)
+    df['r6_sales_contrib'] = df.apply(
+        lambda row: row['r6_sales'] * 100.0 / sum_dict[(row['brand_name'], row['territory'])], axis=1)
     '''create new columns
         rN_sales: rolling sales over N months
         pN_sales: rolling sales over previous N months
     '''
 
-    if 3 in config.rN_growth:
-        df['r3_sales'] = df['M1'] + df['M2'] + df['M3']
-        df['p3_sales'] = df['M4'] + df['M5'] + df['M6']
-        df['r3_growth_value'] = df['r3_sales'] - df['p3_sales']
-        df['r3_growth_pct'] = df['r3_growth_value'] * 100.0 / df['p3_sales'].replace({0: nan})
-        df = df.drop(['r3_sales', 'p3_sales'], axis=1)
+
+    df['r3_sales'] = df['M1'] + df['M2'] + df['M3']
+    df['p3_sales'] = df['M4'] + df['M5'] + df['M6']
+    df['r3_growth_value'] = df['r3_sales'] - df['p3_sales']
+    df['r3_growth_pct'] = df['r3_growth_value'] * 100.0 / df['p3_sales'].replace({0: nan})
+    df = df.drop(['r3_sales', 'p3_sales'], axis=1)
 
     if 6 in config.rN_growth:
-        df['r6_sales'] = df['M1'] + df['M2'] + df['M3'] + df['M4'] + df['M5'] + df['M6']
         df['p6_sales'] = df['M7'] + df['M8'] + df['M9'] + df['M10'] + df['M11'] + df['M12']
         df['r6_growth_value'] = df['r6_sales'] - df['p6_sales']
         df['r6_growth_pct'] = df['r6_growth_value'] * 100.0 / df['p6_sales'].replace({0: nan})
+        df = df.drop(['p6_sales'], axis=1)
 
     if 12 in config.rN_growth:
         df['r12_sales'] = df['M1'] + df['M2'] + df['M3'] + df['M4'] + df['M5'] + df['M6'] + df['M7'] + df['M8'] + df[
@@ -93,20 +111,9 @@ def create_sales_table(df):
         if c in months_to_discard:
             df = df.drop(c, axis=1)
 
-    '''sales_contrib: how much the site contributed towards the brand's territory sales
-    '''
-    # Groupby brand_name, territory, find sum, and create a dictionary from the df for easy lookup
-    sum_dict = \
-    df[['brand_name', 'territory', 'r6_sales']].groupby(['brand_name', 'territory'], sort=False).sum().to_dict()[
-        'r6_sales']
-
-    # create new column by dividing sales by sum for (brand,territory)
-    df['r6_sales_contrib'] = df.apply(
-        lambda row: row['r6_sales'] * 100.0 / sum_dict[(row['brand_name'], row['territory'])], axis=1)
-
     print df.head()
-    print "Generating database from excel sheet: ", config.monthly_data_excel_sheet, "... ",
-    df.to_sql(con=db.get_engine(application), name=config.monthly_data_table_name, flavor=config.db_flavor,
+    print "Generating database from excel sheet: ", config.sales_data_excel_sheet, "... ",
+    df.to_sql(con=db.get_engine(application), name=config.sales_data_table_name, flavor=config.db_flavor,
               if_exists='replace')
     print '.'
 
@@ -126,11 +133,14 @@ def create_terr_assoc_table():
 
 def read_excel_format_1():
 
+    # Read excel sheet and create dataframe of required format
+    # excel sheet format similar to monthly site listing
+
     # Descriptive columns to pick from the DB
     descriptive_cols = frozenset(['Territory', 'Site', 'Site ID', 'Brand Name',
                                   'Address', 'City', 'State', 'Zip'])
 
-    df = read_excel(config.excel_file, sheetname=config.monthly_data_excel_sheet,
+    df = read_excel(config.excel_file, sheetname=config.sales_data_excel_sheet,
                     converters={'Territory':str, 'Site':str, 'Site ID':str, 'Brand Name':str,
                                 'Address': str, 'City': str, 'State': str, 'Zip': str,
                                 'M1':int, 'M2':int, 'M3':int, 'M4':int, 'M5':int, 'M6':int, 'M7':int, 'M8':int,
@@ -150,9 +160,58 @@ def read_excel_format_1():
 
     return df
 
+def read_excel_format_2():
+
+    # Read excel sheet and create dataframe of required format
+    # excel sheet format similar to demo data with two level columns
+
+    df = read_excel(config.excel_file, sheetname=config.sales_data_excel_sheet, header=None)
+    df.columns = MultiIndex.from_arrays((df.iloc[0:2].fillna(method='ffill', axis=1))[:2].values,
+                                           names=['level0', 'level1'])
+    df.drop(df.index[[0, 1]], inplace=True)
+    df.columns = [' '.join(col).strip() for col in df.columns.values]
+
+    df_list = []
+    for brand in (config.primary_brands.union(config.other_brands)):
+        df_new = (df[['Site Site', 'Site Site ID', 'Site Territory', 'Site Address',
+                      'Site City', 'Site State', 'Site Zip',
+                      '%s M1' % brand, '%s M2' % brand, '%s M3' % brand,
+                      '%s M4' % brand, '%s M5' % brand, '%s M6' % brand]])
+        df_new['brand_name'] = Series([brand for x in range(len(df_new.index))], index=df_new.index)
+
+
+        df_new.rename(columns={'Site Site': 'site',
+                               'Site Site ID': 'site_id',
+                               'Site Territory': 'territory',
+                               'Site Address': 'address',
+                               'Site City': 'city',
+                               'Site State': 'state',
+                               'Site Zip': 'zip',
+                              '%s M1' % brand: 'M1',
+                               '%s M2' % brand: 'M2',
+                               '%s M3' % brand: 'M3',
+                                '%s M4' % brand: 'M4',
+                                '%s M5' % brand: 'M5',
+                               '%s M6' % brand: 'M6'}, inplace=True)
+
+        df_list.append(df_new)
+
+    df = concat(df_list)
+
+    # change data type to numeric for sales data
+    for col in ['M1', 'M2', 'M3', 'M4', 'M5', 'M6']:
+        df[col] = to_numeric(df[col]).round()
+
+    print df.head(n=5)
+
+    return df
+
 
 def create_and_populate_tables():
-    df = read_excel_format_1()
+    #df = read_excel_format_1()
+
+    df = read_excel_format_2()
+
     create_sales_table(df)
     create_terr_assoc_table()
 
@@ -316,63 +375,54 @@ def describe_site_for_twilio(site):
     plot_dict = {}
     bubble_plot = {}
     r_growth_pct = {}
-    index_lst = range(1, 7)
-    sales_index = ['R3', 'R6', 'R12']
+    sales_index = range(1, 7)
     bubble_index = ['R3 Growth', 'R3 Growth Pct', 'R6 Sales']
     date = config.m1_month_year.title()
     sms_resp_str = "As of %s --" % (date)
 
-    # Retrieve primary brands
-    for brand_name in config.primary_brands:
-        accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
-        if len(accounts):
-            account = accounts[0]
+    #setattr(db.get_engine(application), 'echo', True)
+    for brand_name in (config.primary_brands.union(config.other_brands)):
+        #print str(Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)))
+        #accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
+        account = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).first()
+
+        #print "retrieving for brand = ", brand_name, accounts, accounts.brand_name
+        if account:
             sms_resp_str = sms_resp_str + \
                        " %s: " % (brand_name) + \
                         " contrib: " + none_float(account.r6_sales_contrib) + \
                         ", growth: " + none_float(account.r3_growth_pct)
             plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
                                         account.M4, account.M5, account.M6],
-                                       index=index_lst)
-            r_growth_pct[brand_name] = Series([account.r3_growth_pct, account.r6_growth_pct, account.r12_growth_pct],
-                                         index=sales_index)
-            bubble_plot[brand_name] = Series([account.r3_growth_value, account.r3_growth_pct, account.r6_sales],
-                                             index=bubble_index)
+                                       index=sales_index)
 
-    # Retrieve other brands
-    for brand_name in config.other_brands:
-        accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
-        if len(accounts):
-            account = accounts[0]
-            sms_resp_str = sms_resp_str + \
-                           " %s: " % (brand_name) + \
-                           " contrib: " + none_float(account.r6_sales_contrib) + \
-                           ", growth: " + none_float(account.r3_growth_pct)
-            plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
-                                            account.M4, account.M5, account.M6],
-                                           index=index_lst)
-            r_growth_pct[brand_name] = Series([account.r3_growth_pct, account.r6_growth_pct, account.r12_growth_pct],
-                                              index=sales_index)
+            r_growth_pct[brand_name] = Series([account.r3_growth_pct], index=['R3'])
+            if 6 in config.rN_growth:
+                r_growth_pct[brand_name] = r_growth_pct[brand_name].append(Series([account.r6_growth_pct], index=['R6']))
+            if 12 in config.rN_growth:
+                r_growth_pct[brand_name] = r_growth_pct[brand_name].append(Series([account.r12_growth_pct], index=['R12']))
+
             bubble_plot[brand_name] = Series([account.r3_growth_value, account.r3_growth_pct, account.r6_sales],
                                              index=bubble_index)
+            #print accounts.__dict__
+            db.session.expire(account)
 
     print "size of sms : ", len(sms_resp_str)
     # Generate sales trend plot for all brands
+    print plot_dict
     plt.style.use('ggplot')
     DataFrame(plot_dict).plot(marker='.', figsize=(3, 2.5), fontsize=1)
     plt.grid(True)
-    #plt.ylabel('Number of Vials', fontsize=6)
     plt.ylim(ymin=0)
     plt.xlim(xmin=0, xmax=7)
     month_labels = [datetime.datetime.strftime((datetime.datetime.strptime(config.m1_month_year, "%b %y") +
-                                                relativedelta(months=-(i - 1))), "%b %y") for i in index_lst]
+                                                relativedelta(months=-(i - 1))), "%b %y") for i in sales_index]
     # print month_labels
-    plt.xticks(index_lst, month_labels, fontsize=6.5)
+    plt.xticks(sales_index, month_labels, fontsize=6.5)
     plt.yticks(fontsize=6.5)
     plt.title("Sales Trends", fontsize=8)
     plt.legend(prop={'size':6})
     plt.tick_params(length=0)
-    #fig = plt.figure(figsize=[3, 5], dpi=200)
     sales_trend_filename = site.replace(" ", "_") + '_sales_trend.png'
     # print filename
     plt.savefig(config.fig_dir + '/' + sales_trend_filename)
@@ -401,7 +451,7 @@ def describe_site_for_twilio(site):
     # print df.index
     # print list(df.index)
     plt.style.use('ggplot')
-    df.plot.scatter(x='R3 Growth', y='R3 Growth Pct', s=df['R6 Sales'] * 0.75, figsize=(6, 2.5), alpha=0.5)
+    df.plot.scatter(x='R3 Growth', y='R3 Growth Pct', s=df['R6 Sales'] * config.bubble_scale_factor, figsize=(6, 2.5), alpha=0.5)
     plt.grid(True)
     plt.ylabel('R3 Growth Pct', fontsize=6.5)
     plt.xlabel('R3 Growth Value', fontsize=6.5)
