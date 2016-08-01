@@ -53,8 +53,19 @@ class Monthly(db.Model):
 class TerrAssoc(db.Model):
     __tablename__ = config.terr_assoc_table_name
     #index = db.Column('index', db.BigInteger, primary_key=True)
-    phone = db.Column('phone', db.BigInteger, primary_key=True)
+    name = db.Column('name', db.String, primary_key=True)
+    phone = db.Column('phone', db.String)
     territory = db.Column('territory', db.String)
+
+    def __init__(self, name, phone, territory):
+        self.name = name
+        self.phone = phone
+        self.territory = territory
+
+def add_terr_assoc(name, phone, territory):
+    terr_assoc = TerrAssoc(name, phone, territory)
+    db.session.add(terr_assoc)
+    db.session.commit()
 
 def create_kvsession_store():
     metadata = MetaData(bind=db.get_engine(application))
@@ -119,10 +130,10 @@ def create_sales_table(df):
 
 def create_terr_assoc_table():
     df = read_excel(config.excel_file, sheetname=config.terr_assoc_excel_sheet,
-                    converters={'Phone': int, 'Territory': str})
+                    converters={'Name': str, 'Phone': str, 'Territory': str})
 
 
-    df.rename(columns={'Phone': 'phone', 'Territory': 'territory'}, inplace=True)
+    df.rename(columns={'Name': 'name', 'Phone': 'phone', 'Territory': 'territory'}, inplace=True)
 
     print df.head()
     print "Generating database from excel sheet: ", config.terr_assoc_excel_sheet, "... ",

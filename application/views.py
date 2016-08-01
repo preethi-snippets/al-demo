@@ -1,13 +1,51 @@
 from application import application
-from flask import render_template,redirect, request, send_from_directory, session, url_for
+from flask import render_template,redirect, request, send_from_directory, session, url_for, flash
 import models, config
 from time import time
 import twilio.twiml
 from flask_weasyprint import HTML, CSS
 
+from wtforms import Form, BooleanField, StringField, PasswordField, validators, IntegerField, ValidationError
+from wtforms.validators import Email, InputRequired
+
+
+def validate_phone(form, field):
+    if len(field.data) != 11:
+        raise ValidationError('US Phone Number must be 11 digits')
+    if field.data[0] != '1':
+        raise ValidationError('US Phone Number must start with country code 1')
+
+
+def validate_territory(form, field):
+    if field.data.lower() != 'all':
+        raise ValidationError('All is the only available demo territory')
+
+class AddPhoneForm(Form):
+
+    fname = StringField('Full Name', [validators.Length(min=3, max=25)], render_kw={'placeholder':'John Doe'})
+    #email = StringField('Email Address',
+     #                  validators=[InputRequired("Please enter email address"), Email("Need valid email address")],
+      #                  render_kw={'placeholder': 'jdoe@company.com'})
+    territory = StringField('Territory', [InputRequired(), validate_territory], render_kw={'placeholder': 'All'})
+
+    phone = StringField('11 digit US Phone Number', [InputRequired(), validate_phone],
+                         render_kw={'placeholder': '1XXXXXXXXXX'})
+
+
+
 @application.route('/')
 def hello_world():
     return render_template('index.html')
+
+@application.route('/addphone', methods=['GET', 'POST'])
+def addphone():
+    form = AddPhoneForm(request.form)
+    #print form.username.data, form.email.data
+    if request.method == 'POST' and form.validate():
+        models.add_terr_assoc(name=form.fname.data, phone=form.phone.data, territory=form.territory.data)
+        flash('Added user ' + form.fname.data + ' with phone ' + form.phone.data)
+        return render_template('index.html')
+    return render_template('add_phone.html', form=form)
 
 @application.route('/createdb')
 def createdb():

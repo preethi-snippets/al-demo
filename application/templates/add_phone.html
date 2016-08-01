@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <TITLE>Add New Phone Number </TITLE>
+        <META CHARSET="UTF-8" />
+        <link type="text/css" rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/pure-min.css" />
+        <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='add_phone.css') }}" />
+    </head>
+
+    <body>
+
+    <div class="a0">
+        <center>
+        <img src="{{ url_for('static', filename='159-logo-885.png') }}" height="30px" width="200px" />
+            </center>
+    </div>
+      <div class="a0">
+    </div>
+      <div class="a0">
+        <center>
+            <h3>Ask Al! Demo: Add New Phone Number</h3>
+            <p>New Rep details to add to demo setup:</p>
+        </center>
+    </div>
+    <div class="a1">
+        <center>
+            <form class="pure-form pure-form-aligned" method=post action="/addphone" >
+            <fieldset>
+                <div class="pure-control-group">
+                    {{ form.fname.label }} {{ form.fname }}
+                    {% if form.fname.errors %}
+                        <ul class="errors">{% for error in form.fname.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                     {% endif %}
+                </div>
+                {# <div class="pure-control-group">
+                    {{ form.lname.label }} {{ form.lname }}
+                     {% if form.lname.errors %}
+                        <ul class="errors">{% for error in form.lname.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                     {% endif %}
+                </div>
+
+                <div class="pure-control-group">
+                    {{ form.email.label }} {{ form.email }}
+                       {% if form.email.errors %}
+                        <ul class="errors">{% for error in form.email.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                     {% endif %}
+                </div> #}
+
+                <div class="pure-control-group">
+                    {{ form.phone.label }} {{ form.phone }}
+                       {% if form.phone.errors %}
+                        <ul class="errors">{% for error in form.phone.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                     {% endif %}
+                </div>
+
+                  <div class="pure-control-group">
+                    {{ form.territory.label }} {{ form.territory }}
+                       {% if form.territory.errors %}
+                        <ul class="errors">{% for error in form.territory.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                     {% endif %}
+                </div>
+
+                <div class="pure-controls">
+                    <button type="submit" class="pure-button pure-button-primary">Add</button>
+                </div>
+            </fieldset>
+            </form>
+        </center>
+    </div>
+
+    </body>
+
+</html>
