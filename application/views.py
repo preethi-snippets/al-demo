@@ -7,7 +7,9 @@ from flask_weasyprint import HTML, CSS
 
 from wtforms import Form, BooleanField, StringField, PasswordField, validators, IntegerField, ValidationError
 from wtforms.validators import Email, InputRequired
+from flask_images import Images
 
+images = Images(application)
 
 def validate_phone(form, field):
     if len(field.data) != 11:
@@ -44,7 +46,8 @@ def addphone():
     if request.method == 'POST' and form.validate():
         models.add_terr_assoc(name=form.fname.data, phone=form.phone.data, territory=form.territory.data)
         flash('Added user ' + form.fname.data + ' with phone ' + form.phone.data)
-        return render_template('index.html')
+        return redirect(url_for('addphone'))
+    #flash('No Added user')
     return render_template('add_phone.html', form=form)
 
 @application.route('/createdb')
@@ -57,7 +60,7 @@ def createdb():
 def lookup():
     site_name = request.args['site_name']
     start = time()
-    r = models.Monthly.query.filter_by(site=site_name).all()
+    r = models.Sales.query.filter_by(site=site_name).all()
     return render_template('lookup.html', site_name=site_name, time_taken=(str(time() - start) + " s."), result=r)
 
 @application.route('/top3')
@@ -102,7 +105,7 @@ def create_session(from_phone, sites):
     #print resp
     return resp
 
-def build_twilio_message(msg_list, response):
+def create_msg_chunks(msg_list, response):
 
     cur_len = 0
     num_msgs = 1
@@ -155,7 +158,7 @@ def parse_twilio():
     invalid_keyword_message = "Sorry, please try one from these: "
     keywords = ['help','top3', 'bottom3', 'describe']
     from_phone = "+15129638448"
-    #words=['bottom3']
+    #words=['top3']
     #words = ['d', 'cancer']
     words = ['10']
     #from_phone = request.form.get('From')
@@ -169,10 +172,18 @@ def parse_twilio():
         response.message(help_message + ' '.join(keywords))
 
     elif (keyword == 'top3' or keyword.startswith('t')):
-        response.message("Top 3 for " + models.get_top3_by_phone(lookup_phone))
+        msg_list = []
+        msg_list.append("Top 3 for ")
+        msg_list.extend(models.get_top3_by_phone(lookup_phone))
+        print msg_list
+        response = create_msg_chunks(msg_list, response)
 
     elif (keyword == 'bottom3' or keyword.startswith('b')):
-        response.message("Bottom 3 for " + models.get_bottom3_by_phone(lookup_phone))
+        msg_list = []
+        msg_list.append("Bottom 3 for ")
+        msg_list.extend(models.get_bottom3_by_phone(lookup_phone))
+        print msg_list
+        response = create_msg_chunks(msg_list, response)
 
     elif (keyword == 'describe' or keyword.startswith('d')):
         sites = models.find_site_by_territory(lookup_phone, words[1])
@@ -181,7 +192,7 @@ def parse_twilio():
         elif (len(sites) == 1):
             response = generate_report(sites[0].site, response)
         else:
-            response = build_twilio_message(create_session(lookup_phone, sites), response)
+            response = create_msg_chunks(create_session(lookup_phone, sites), response)
 
     elif (1 <= int(keyword) <= 20):
         # retrieve site from phone's session
@@ -192,6 +203,61 @@ def parse_twilio():
 
     return (str(response))
 
+def generate_ivr_menu(response):
+    menu_msg = "For top 3 accounts, press 1. For bottom 3 accounts, press 2. To hangup, press *"
+    with response.gather(numDigits=1, action=url_for('ivr_menu'), method="POST") as g:
+        for i in range(3):
+                g.say(menu_msg, voice="man", language="en")
+                g.pause(length=3)
+    return response
+
+@application.route('/al-voice/welcome', methods = ['GET', 'POST'])
+def ivr_welcome():
+    from_phone = request.form.get('From')
+    #from_phone = "+15129638448"
+    lookup_phone = from_phone.lstrip('+')
+    username = models.lookup_user(lookup_phone)
+    response = twilio.twiml.Response()
+    welcome_msg = "Welcome " + username
+    welcome_msg += "!"
+    response.say(welcome_msg, voice="man", language="en")
+    response.pause(length=1)
+    welcome_msg = "This is Al to help you with insights. "
+    response.say(welcome_msg, voice="man", language="en")
+    response.pause(length=1)
+    response = generate_ivr_menu(response)
+    return str(response)
+
+@application.route('/al-voice/menu', methods = ['POST'])
+def ivr_menu():
+    from_phone = request.form.get('From')
+    #from_phone = "+15129638448"
+    lookup_phone = from_phone.lstrip('+')
+    selected_option = request.form['Digits']
+    #selected_option = '1'
+    response = twilio.twiml.Response()
+    if (selected_option == '1'):
+        response.say('Here are the top 3 accounts.', voice="man", language="en")
+        response.pause(length=1)
+        response.say(" ".join(models.get_top3_by_phone(lookup_phone)),
+                     voice="man", language="en")
+        return str(response)
+    elif (selected_option == '2'):
+        response.say('Here are the bottom 3 accounts.', voice="man", language="en")
+        response.pause(length=1)
+        response.say(" ".join(models.get_bottom3_by_phone(lookup_phone)),
+                     voice="man", language="en")
+        return str(response)
+    elif (selected_option == '*'):
+        response.say('Its been a pleasure. Please leave feedback on my performance at info@159solutions.com. Good bye!',
+                     voice="man", language="en")
+        response.hangup()
+        return str(response)
+    else:
+        error_msg = "Sorry, I do not recognize that option."
+        response.say(error_msg, voice="man", language="en")
+        response = generate_ivr_menu(response)
+        return str(response)
 
 @application.route('/session-test', methods = ['GET', 'POST'])
 def session_test():

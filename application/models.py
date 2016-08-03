@@ -16,13 +16,13 @@ from sqlalchemy import MetaData
 
 db = SQLAlchemy(application)
 
-class Monthly(db.Model):
+class Sales(db.Model):
     __tablename__ = config.sales_data_table_name
-    index = db.Column('index', db.BigInteger, primary_key=True)
+    id = db.Column('id', db.BigInteger, primary_key=True, autoincrement=True)
     #rank = db.Column('Rank', db.BigInteger)
     territory = db.Column('territory', db.String)
     site = db.Column('site', db.String)
-    site_id = db.Column('site_id', db.String)
+    site_id = db.Column('site_id', db.String, nullable=False)
     #affiliations = db.Column('Affiliated Outlets/Physicians', db.String)
     #mdm_id = db.Column('mdm_id', db.String)
     address = db.Column('address', db.String)
@@ -52,10 +52,10 @@ class Monthly(db.Model):
 
 class TerrAssoc(db.Model):
     __tablename__ = config.terr_assoc_table_name
-    #index = db.Column('index', db.BigInteger, primary_key=True)
-    name = db.Column('name', db.String, primary_key=True)
-    phone = db.Column('phone', db.String)
-    territory = db.Column('territory', db.String)
+     #index = db.Column('index', db.BigInteger, primary_key=True)
+    name = db.Column('name', db.String, nullable=False)
+    phone = db.Column('phone', db.String, primary_key=True)
+    territory = db.Column('territory', db.String, nullable=False)
 
     def __init__(self, name, phone, territory):
         self.name = name
@@ -69,11 +69,15 @@ def add_terr_assoc(name, phone, territory):
 
 def create_kvsession_store():
     metadata = MetaData(bind=db.get_engine(application))
+    #metadata.reflect()
     store = SQLAlchemyStore(db.get_engine(application), metadata, 'kvstore')
     store.table.create(checkfirst=True)
     KVSessionExtension(store, application)
 
 def create_sales_table(df):
+
+    '''df contains the site and Sales sales data
+    '''
 
     '''sales_contrib: how much the site contributed towards the brand's territory sales based on rolling 6 months sales
      '''
@@ -115,7 +119,7 @@ def create_sales_table(df):
         df['r12_growth_pct'] = df['r12_growth_value'] * 100.0 / df['p12_sales'].replace({0: nan})
         df = df.drop(['r12_sales', 'p12_sales'], axis=1)
 
-    # Once crunched, monthly sales data need not be stored in DB
+    # Once crunched, sales data need not be stored in DB
     months_to_discard = list(config.monthly_data_cols - config.months_to_store)
     print months_to_discard
     for c in df.columns:
@@ -123,10 +127,15 @@ def create_sales_table(df):
             df = df.drop(c, axis=1)
 
     print df.head()
+    engine = db.get_engine(application)
+    print "Creating table ", config.sales_data_table_name
+    db.metadata.drop_all(engine, tables=[Sales.__table__])
+    db.metadata.create_all(engine, tables=[Sales.__table__])
     print "Generating database from excel sheet: ", config.sales_data_excel_sheet, "... ",
-    df.to_sql(con=db.get_engine(application), name=config.sales_data_table_name, flavor=config.db_flavor,
-              if_exists='replace')
+    df.to_sql(con=engine, name=config.sales_data_table_name, flavor=config.db_flavor,
+              if_exists='append', index=False)
     print '.'
+    #db.metadata.reflect()
 
 def create_terr_assoc_table():
     df = read_excel(config.excel_file, sheetname=config.terr_assoc_excel_sheet,
@@ -136,10 +145,16 @@ def create_terr_assoc_table():
     df.rename(columns={'Name': 'name', 'Phone': 'phone', 'Territory': 'territory'}, inplace=True)
 
     print df.head()
-    print "Generating database from excel sheet: ", config.terr_assoc_excel_sheet, "... ",
-    df.to_sql(con=db.get_engine(application), name=config.terr_assoc_table_name, flavor=config.db_flavor,
-              if_exists='replace')
+
+    engine = db.get_engine(application)
+    print "Creating table ", config.terr_assoc_table_name
+    db.metadata.drop_all(engine, tables=[TerrAssoc.__table__])
+    db.metadata.create_all(engine, tables=[TerrAssoc.__table__])
+    print "Generating database from excel sheet: ", config.terr_assoc_excel_sheet, "... "
+    df.to_sql(con=engine, name=config.terr_assoc_table_name, flavor=config.db_flavor,
+              if_exists='append', index=False)
     print '.'
+    #db.metadata.reflect()
 
 
 def read_excel_format_1():
@@ -248,16 +263,17 @@ def populate_db_from_csv():
     '''
 
 def create_db():
-    db.create_all()
+    #db.drop_all()
+    #db.create_all()
     create_and_populate_tables()
 
 def get_top_3_by_territory(territory, brand_name):
-    all_accounts = Monthly.query.filter(and_(Monthly.territory==territory, Monthly.brand_name==brand_name)).order_by(Monthly.r3_growth_value.desc()).limit(3).all()
+    all_accounts = Sales.query.filter(and_(Sales.territory==territory, Sales.brand_name==brand_name)).order_by(Sales.r3_growth_value.desc()).limit(3).all()
     print all_accounts
     return all_accounts
 
 def get_bottom_3_by_territory(territory, brand_name):
-    all_accounts = Monthly.query.filter(and_(Monthly.territory==territory, Monthly.brand_name==brand_name)).order_by(Monthly.r3_growth_value.asc()).limit(3).all()
+    all_accounts = Sales.query.filter(and_(Sales.territory==territory, Sales.brand_name==brand_name)).order_by(Sales.r3_growth_value.asc()).limit(3).all()
     return all_accounts
 
 def describe_site(site):
@@ -268,7 +284,7 @@ def describe_site(site):
 
     # Retrieve primary brands
     for brand_name in config.primary_brands:
-        accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
+        accounts = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).all()
         primary_accounts.extend(accounts)
         plot_dict[brand_name] = Series([accounts[0].M1, accounts[0].M2, accounts[0].M3,
                                         accounts[0].M4, accounts[0].M5, accounts[0].M6],
@@ -277,7 +293,7 @@ def describe_site(site):
     # Retrieve other brands
     other_accounts = []
     for brand_name in config.other_brands:
-        accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
+        accounts = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).all()
         other_accounts.extend(accounts)
         plot_dict[brand_name] = Series([accounts[0].M1, accounts[0].M2, accounts[0].M3,
                                         accounts[0].M4, accounts[0].M5, accounts[0].M6],
@@ -304,6 +320,10 @@ def describe_site(site):
                     'latest_date': config.m1_month_year.title(),
                     'trend_file': filename}
 
+def lookup_user(phone):
+    user = TerrAssoc.query.filter(TerrAssoc.phone == phone).first()
+    return user.name
+
 def lookup_terr(phone):
     account_list = TerrAssoc.query.filter(TerrAssoc.phone == phone).limit(1).all()
     #for account in account_list:
@@ -312,26 +332,28 @@ def lookup_terr(phone):
 
 def get_top3_by_phone(phone):
     territory = lookup_terr(phone)[0].territory
-
-    response = ""
+    response = []
     for brand_name in config.primary_brands:
-        all_accounts = Monthly.query.filter(and_(Monthly.territory == territory, Monthly.brand_name == brand_name)).order_by(Monthly.r3_growth_value.desc()).limit(3).all()
-        response = response + "%s :" % brand_name
+        all_accounts = Sales.query.filter(
+            and_(Sales.territory == territory, Sales.brand_name == brand_name)).order_by(
+            Sales.r3_growth_value.desc()).limit(3).all()
+        response.append("%s :" % brand_name.title())
         for index, account in enumerate(all_accounts):
-            response = response + " %d) %s (growth %s)" % (index+1, account.site, account.r3_growth_value)
+            response.append(" %d) %s (growth %s) " % (index+1, account.site, account.r3_growth_value))
 
     return response
 
 def get_bottom3_by_phone(phone):
+
     territory = lookup_terr(phone)[0].territory
-
-    response = ""
+    response = []
     for brand_name in config.primary_brands:
-        all_accounts = Monthly.query.filter(and_(Monthly.territory == territory, Monthly.brand_name == brand_name)).order_by(Monthly.r3_growth_value.asc()).limit(3).all()
-        response = response + "%s :" % brand_name
+        all_accounts = Sales.query.filter(
+            and_(Sales.territory == territory, Sales.brand_name == brand_name)).order_by(
+            Sales.r3_growth_value.asc()).limit(3).all()
+        response.append("%s :" % brand_name.title())
         for index, account in enumerate(all_accounts):
-            response = response + " %d) %s (growth %.1f)" % (index+1, account.site, account.r3_growth_value)
-
+            response.append(" %d) %s (growth %s) " % (index + 1, account.site, account.r3_growth_value))
     return response
 
 def find_site_by_territory(phone, site_input):
@@ -339,7 +361,7 @@ def find_site_by_territory(phone, site_input):
     sites = []
 
     for brand_name in config.primary_brands:
-        accounts = Monthly.query.filter(and_(Monthly.territory == territory, Monthly.brand_name == brand_name, Monthly.site.ilike('%'+site_input+'%'))).distinct(Monthly.site_id).all()
+        accounts = Sales.query.filter(and_(Sales.territory == territory, Sales.brand_name == brand_name, Sales.site.ilike('%'+site_input+'%'))).distinct(Sales.site_id).all()
         sites.extend(accounts)
 
     # maybe store these sites in a session?
@@ -393,9 +415,9 @@ def describe_site_for_twilio(site):
 
     #setattr(db.get_engine(application), 'echo', True)
     for brand_name in (config.primary_brands.union(config.other_brands)):
-        #print str(Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)))
-        #accounts = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).all()
-        account = Monthly.query.filter(and_(Monthly.site == site, Monthly.brand_name == brand_name)).first()
+        #print str(Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)))
+        #accounts = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).all()
+        account = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).first()
 
         #print "retrieving for brand = ", brand_name, accounts, accounts.brand_name
         if account:

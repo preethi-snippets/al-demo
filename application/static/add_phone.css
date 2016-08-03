@@ -1,4 +1,4 @@
-.a0 ,.a1
+.a0 ,.a1, .a2
     {
         border: none;
         background-color: white;
@@ -13,19 +13,32 @@
     }
     .a1
     {
-        height:500px;
+        height:250px;
         float: left;
         width: 100%;
     }
 
+    .a2
+    {
+        height:100px;
+        float: left;
+        width: 100%;
+        display: table;
+    }
+    .a1
     .image
     {
         text-align: center;
         vertical-align: middle;
-
-
     }
 
+    .success
+    {
+        color: green;
+        text-align: center;
+        vertical-align: middle;
+
+    }
     .errors
     {
         color: red;
@@ -34,3 +47,4 @@
     {
     list-style-type: none;
     }
+

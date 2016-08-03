@@ -12,15 +12,27 @@
     <div class="a0">
         <center>
         <img src="{{ url_for('static', filename='159-logo-885.png') }}" height="30px" width="200px" />
-            </center>
+        </center>
     </div>
-      <div class="a0">
-    </div>
+
       <div class="a0">
         <center>
             <h3>Ask Al! Demo: Add New Phone Number</h3>
-            <p>New Rep details to add to demo setup:</p>
         </center>
+    </div>
+
+    <div class="a0">
+        <div>
+            <center>
+                {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                {% for message in messages %}
+                <p class="success"> {{ message }} </p>
+                 {% endfor %}
+                {% endif %}
+                {% endwith %}
+            </center>
+        </div>
     </div>
     <div class="a1">
         <center>
@@ -61,13 +73,12 @@
                 </div>
 
                 <div class="pure-controls">
-                    <button type="submit" class="pure-button pure-button-primary">Add</button>
+                    <button type="submit" class="pure-button pure-button-primary">Add Phone</button>
                 </div>
             </fieldset>
             </form>
         </center>
     </div>
-
     </body>
 
 </html>
