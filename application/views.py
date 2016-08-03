@@ -157,12 +157,12 @@ def parse_twilio():
     help_message = "Happy to help! I can pull answers to these keywords: "
     invalid_keyword_message = "Sorry, please try one from these: "
     keywords = ['help','top3', 'bottom3', 'describe']
-    from_phone = "+15129638448"
+    #from_phone = "+15129638448"
     #words=['top3']
     #words = ['d', 'cancer']
-    words = ['10']
-    #from_phone = request.form.get('From')
-    #words = request.form.get('Body').lower().split(' ')
+    #words = ['10']
+    from_phone = request.form.get('From')
+    words = request.form.get('Body').lower().split(' ')
     keyword = words[0]
 
     lookup_phone = from_phone.lstrip('+')
@@ -194,7 +194,7 @@ def parse_twilio():
         else:
             response = create_msg_chunks(create_session(lookup_phone, sites), response)
 
-    elif (1 <= int(keyword) <= 20):
+    elif (keyword.isdigit()):
         # retrieve site from phone's session
         site_dict = session[lookup_phone]
         response = generate_report(site_dict[int(keyword)].site, response)
@@ -203,12 +203,16 @@ def parse_twilio():
 
     return (str(response))
 
+def add_msg_to_rsp(response, msg, pause_len=1):
+    response.say(msg, voice="woman", language="en-US")
+    response.pause(length=pause_len)
+    return response
+
 def generate_ivr_menu(response):
     menu_msg = "For top 3 accounts, press 1. For bottom 3 accounts, press 2. To hangup, press *"
     with response.gather(numDigits=1, action=url_for('ivr_menu'), method="POST") as g:
         for i in range(3):
-                g.say(menu_msg, voice="man", language="en")
-                g.pause(length=3)
+                g = add_msg_to_rsp(g, menu_msg, pause_len=3)
     return response
 
 @application.route('/al-voice/welcome', methods = ['GET', 'POST'])
@@ -220,11 +224,9 @@ def ivr_welcome():
     response = twilio.twiml.Response()
     welcome_msg = "Welcome " + username
     welcome_msg += "!"
-    response.say(welcome_msg, voice="man", language="en")
-    response.pause(length=1)
-    welcome_msg = "This is Al to help you with insights. "
-    response.say(welcome_msg, voice="man", language="en")
-    response.pause(length=1)
+    response = add_msg_to_rsp(response, welcome_msg)
+    welcome_msg = "This is Alice to help you with insights. "
+    response = add_msg_to_rsp(response, welcome_msg)
     response = generate_ivr_menu(response)
     return str(response)
 
@@ -237,25 +239,21 @@ def ivr_menu():
     #selected_option = '1'
     response = twilio.twiml.Response()
     if (selected_option == '1'):
-        response.say('Here are the top 3 accounts.', voice="man", language="en")
-        response.pause(length=1)
-        response.say(" ".join(models.get_top3_by_phone(lookup_phone)),
-                     voice="man", language="en")
+        response = add_msg_to_rsp(response, 'Here are the top 3 accounts.')
+        response = add_msg_to_rsp(response, " ".join(models.get_top3_by_phone(lookup_phone)))
         return str(response)
     elif (selected_option == '2'):
-        response.say('Here are the bottom 3 accounts.', voice="man", language="en")
-        response.pause(length=1)
-        response.say(" ".join(models.get_bottom3_by_phone(lookup_phone)),
-                     voice="man", language="en")
+        response = add_msg_to_rsp(response,'Here are the bottom 3 accounts.')
+        response = add_msg_to_rsp(response, " ".join(models.get_bottom3_by_phone(lookup_phone)))
         return str(response)
     elif (selected_option == '*'):
-        response.say('Its been a pleasure. Please leave feedback on my performance at info@159solutions.com. Good bye!',
-                     voice="man", language="en")
+        response = add_msg_to_rsp(response,
+                                  'Its been a pleasure. Please leave feedback on my performance at info@159solutions.com. Good bye!')
         response.hangup()
         return str(response)
     else:
         error_msg = "Sorry, I do not recognize that option."
-        response.say(error_msg, voice="man", language="en")
+        response = add_msg_to_rsp(response, error_msg)
         response = generate_ivr_menu(response)
         return str(response)
 
