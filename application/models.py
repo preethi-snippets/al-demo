@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from application import application
 from sqlalchemy.sql.expression import and_
-from pandas import read_excel, read_table, Series, DataFrame, concat, MultiIndex, to_numeric
+from pandas import read_excel, read_table, Series, DataFrame, concat, MultiIndex, to_numeric, read_sql
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib import pyplot as plt
@@ -38,6 +38,8 @@ class Sales(db.Model):
     M5 = db.Column('M5', db.Integer)
     M6 = db.Column('M6', db.Integer)
 
+    r3_sales = db.Column('r3_sales', db.Integer)
+    p3_sales = db.Column('p3_sales', db.Integer)
     r6_sales = db.Column('r6_sales', db.Integer)
     r6_sales_contrib = db.Column('r6_sales_contrib', db.Float)
     r3_growth_value = db.Column('r3_growth_value', db.Integer)
@@ -102,7 +104,6 @@ def create_sales_table(df):
     df['p3_sales'] = df['M4'] + df['M5'] + df['M6']
     df['r3_growth_value'] = df['r3_sales'] - df['p3_sales']
     df['r3_growth_pct'] = df['r3_growth_value'] * 100.0 / df['p3_sales'].replace({0: nan})
-    df = df.drop(['r3_sales', 'p3_sales'], axis=1)
 
     if 6 in config.rN_growth:
         df['p6_sales'] = df['M7'] + df['M8'] + df['M9'] + df['M10'] + df['M11'] + df['M12']
@@ -325,13 +326,16 @@ def lookup_user(phone):
     return user.name
 
 def lookup_terr(phone):
-    account_list = TerrAssoc.query.filter(TerrAssoc.phone == phone).limit(1).all()
+    account = TerrAssoc.query.filter(TerrAssoc.phone == phone).first()
     #for account in account_list:
      #   print account.phone, account.territory
-    return account_list
+    if account:
+        return account.territory
+    else:
+        return None
 
 def get_top3_by_phone(phone):
-    territory = lookup_terr(phone)[0].territory
+    territory = lookup_terr(phone)
     response = []
     for brand_name in config.primary_brands:
         all_accounts = Sales.query.filter(
@@ -340,12 +344,11 @@ def get_top3_by_phone(phone):
         response.append("%s :" % brand_name.title())
         for index, account in enumerate(all_accounts):
             response.append(" %d) %s (growth %s) " % (index+1, account.site, account.r3_growth_value))
-
     return response
 
 def get_bottom3_by_phone(phone):
 
-    territory = lookup_terr(phone)[0].territory
+    territory = lookup_terr(phone)
     response = []
     for brand_name in config.primary_brands:
         all_accounts = Sales.query.filter(
@@ -357,7 +360,7 @@ def get_bottom3_by_phone(phone):
     return response
 
 def find_site_by_territory(phone, site_input):
-    territory = lookup_terr(phone)[0].territory
+    territory = lookup_terr(phone)
     sites = []
 
     for brand_name in config.primary_brands:
@@ -374,34 +377,6 @@ def none_float(input):
         return "NA"
     else:
         return "%.1f%%" % (input)
-
-'''
-def describe_one_site_twilio(site):
-    plot_dict = {}
-    index_lst = range(1, 7)
-    sms_resp_str = ""
-    date = config.m1_month_year.title()
-
-    for brand_name in config.primary_brands:
-        sms_resp_str = sms_resp_str + \
-                       "%s: " % (brand_name) + \
-                       " terr contrib: " + none_float(account.r6_sales_contrib) + \
-                       ", growth: " + none_float(account.r3_growth_pct) + \
-                       " (%s) " % (date)
-        plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
-                                    account.M4, account.M5, account.M6],
-                                   index=index_lst)
-
-    for brand_name in config.other_brands:
-        sms_resp_str = sms_resp_str + \
-                       "%s: " % (brand_name) + \
-                       " terr contrib: " + none_float(account.r6_sales_contrib) + \
-                       ", growth: " + none_float(account.r3_growth_pct) + \
-                       " (%s) " % (date)
-        plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
-                                    account.M4, account.M5, account.M6],
-                                   index=index_lst)
-        '''
 
 def describe_site_for_twilio(site):
     print site
@@ -517,8 +492,48 @@ def describe_site_for_twilio(site):
             'growth_media': growth_trend_filename,
             'bubble_media': bubble_chart_filename}
 
+def overall_performance(phone):
+    territory = lookup_terr(phone)
+    response = []
 
+    if (territory):
+        response.append("Overall performance at " + territory + ": ")
+        for brand_name in (config.primary_brands):
+            all_sites = read_sql((Sales.query.filter(
+                and_(Sales.territory == territory, Sales.brand_name == brand_name))).statement,
+                                 db.get_engine(application))
 
+            #print all_sites.head(n=5)
+
+            r3_total = all_sites['r3_sales'].sum()
+            p3_total = all_sites['p3_sales'].sum()
+            r3_growth = p3_total - r3_total
+            if p3_total:
+                r3_growth_pct = r3_growth * 100.0 / p3_total
+            else:
+                r3_growth_pct = None
+
+            rsp = "Rolling 3 month sales and growth for %s are " % (brand_name)
+            rsp = rsp + "%d " % (r3_total)
+            rsp = rsp + " and " + none_float(r3_growth_pct) + ". "
+            response.append(rsp)
+
+            top3_sites = Sales.query.filter(and_(Sales.territory == territory, Sales.brand_name == brand_name)).order_by(Sales.r3_sales.desc()).limit(3).all()
+
+            rsp = "Highest contributors: "
+            for (index, item) in enumerate(top3_sites):
+                rsp = rsp + "%d) %s " % (index+1, top3_sites[index].site)
+            response.append(rsp)
+
+            for item in top3_sites:
+                rsp = " %s" % (item.site)
+                rsp = rsp + " grew by " + none_float(item.r3_growth_pct)
+                rsp = rsp + " and contributes " + none_float(item.r6_sales_contrib) + " to " + territory
+                response.append(rsp)
+    else:
+        response.append(" No territory found for phone")
+
+    return response
 
 
 

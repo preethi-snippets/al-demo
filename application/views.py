@@ -10,6 +10,8 @@ from wtforms.validators import Email, InputRequired
 from flask_images import Images
 
 images = Images(application)
+insights_msg = ["Competitive pressure has been increasing in your top accounts. ",
+                "Here are two accounts with growing potential that may be valuable to call on: City Of Hope National Medical Center, Cedars Sinai Health System"]
 
 def validate_phone(form, field):
     if len(field.data) != 11:
@@ -28,7 +30,8 @@ class AddPhoneForm(Form):
     #email = StringField('Email Address',
      #                  validators=[InputRequired("Please enter email address"), Email("Need valid email address")],
       #                  render_kw={'placeholder': 'jdoe@company.com'})
-    territory = StringField('Territory', [InputRequired(), validate_territory], render_kw={'placeholder': 'All'})
+    # territory disabled input at this point
+    territory = StringField('Territory', default='National level')
 
     phone = StringField('11 digit US Phone Number', [InputRequired(), validate_phone],
                          render_kw={'placeholder': '1XXXXXXXXXX'})
@@ -44,7 +47,7 @@ def addphone():
     form = AddPhoneForm(request.form)
     #print form.username.data, form.email.data
     if request.method == 'POST' and form.validate():
-        models.add_terr_assoc(name=form.fname.data, phone=form.phone.data, territory=form.territory.data)
+        models.add_terr_assoc(name=form.fname.data, phone=form.phone.data, territory='National level')
         flash('Added user ' + form.fname.data + ' with phone ' + form.phone.data)
         return redirect(url_for('addphone'))
     #flash('No Added user')
@@ -156,33 +159,33 @@ def parse_twilio():
 
     help_message = "Happy to help! I can pull answers to these keywords: "
     invalid_keyword_message = "Sorry, please try one from these: "
-    keywords = ['help','top3', 'bottom3', 'describe']
-    #from_phone = "+15129638448"
-    #words=['top3']
+    keywords = ['hi','top3', 'bottom3', 'describe', 'overall performance', 'insights']
+    from_phone = "+15129638448"
+    words=['overall']
     #words = ['d', 'cancer']
     #words = ['10']
-    from_phone = request.form.get('From')
-    words = request.form.get('Body').lower().split(' ')
+    #from_phone = request.form.get('From')
+    #words = request.form.get('Body').lower().split(' ')
     keyword = words[0]
 
     lookup_phone = from_phone.lstrip('+')
     response = twilio.twiml.Response()
 
-    if (keyword == 'help' or keyword.startswith('h')):
-        response.message(help_message + ' '.join(keywords))
+    if (keyword == 'hi' or keyword.startswith('h')):
+        response.message(help_message + ', '.join(keywords))
 
     elif (keyword == 'top3' or keyword.startswith('t')):
         msg_list = []
         msg_list.append("Top 3 for ")
         msg_list.extend(models.get_top3_by_phone(lookup_phone))
-        print msg_list
+        #print msg_list
         response = create_msg_chunks(msg_list, response)
 
     elif (keyword == 'bottom3' or keyword.startswith('b')):
         msg_list = []
         msg_list.append("Bottom 3 for ")
         msg_list.extend(models.get_bottom3_by_phone(lookup_phone))
-        print msg_list
+        #print msg_list
         response = create_msg_chunks(msg_list, response)
 
     elif (keyword == 'describe' or keyword.startswith('d')):
@@ -194,12 +197,18 @@ def parse_twilio():
         else:
             response = create_msg_chunks(create_session(lookup_phone, sites), response)
 
+    elif (keyword == 'overall' or keyword.startswith('o')):
+        response = create_msg_chunks(models.overall_performance(lookup_phone), response)
+
+    elif (keyword == 'insights' or keyword.startswith('i')):
+        response = create_msg_chunks(insights_msg, response)
+
     elif (keyword.isdigit()):
         # retrieve site from phone's session
         site_dict = session[lookup_phone]
         response = generate_report(site_dict[int(keyword)].site, response)
     else:
-        response.message(invalid_keyword_message + ' '.join(keywords))
+        response.message(invalid_keyword_message + ', '.join(keywords))
 
     return (str(response))
 
@@ -209,7 +218,7 @@ def add_msg_to_rsp(response, msg, pause_len=1):
     return response
 
 def generate_ivr_menu(response):
-    menu_msg = "For top 3 accounts, press 1. For bottom 3 accounts, press 2. To hangup, press *"
+    menu_msg = "For top 3 accounts, press 1. For bottom 3 accounts, press 2. For overall performance, press 3. For insights, press 4. To hangup, press *"
     with response.gather(numDigits=1, action=url_for('ivr_menu'), method="POST") as g:
         for i in range(3):
                 g = add_msg_to_rsp(g, menu_msg, pause_len=3)
@@ -245,6 +254,12 @@ def ivr_menu():
     elif (selected_option == '2'):
         response = add_msg_to_rsp(response,'Here are the bottom 3 accounts.')
         response = add_msg_to_rsp(response, " ".join(models.get_bottom3_by_phone(lookup_phone)))
+        return str(response)
+    elif (selected_option == '3'):
+        response = add_msg_to_rsp(response, " ".join(models.overall_performance(lookup_phone)))
+        return str(response)
+    elif (selected_option == '4'):
+        response = add_msg_to_rsp(response, " ".join(insights_msg))
         return str(response)
     elif (selected_option == '*'):
         response = add_msg_to_rsp(response,
