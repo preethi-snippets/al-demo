@@ -1,8 +1,9 @@
 from application import application
 from flask import render_template,redirect, request, send_from_directory, session, url_for, flash
 import models, config
-from time import time
+from time import time, sleep
 import twilio.twiml
+from twilio.rest import TwilioRestClient
 from flask_weasyprint import HTML, CSS
 
 from wtforms import Form, BooleanField, StringField, PasswordField, validators, IntegerField, ValidationError
@@ -10,8 +11,6 @@ from wtforms.validators import Email, InputRequired
 from flask_images import Images
 
 images = Images(application)
-insights_msg = ["Competitive pressure has been increasing in your top accounts. ",
-                "Here are two accounts with growing potential that may be valuable to call on: City Of Hope National Medical Center, Cedars Sinai Health System"]
 
 def validate_phone(form, field):
     if len(field.data) != 11:
@@ -21,8 +20,8 @@ def validate_phone(form, field):
 
 
 def validate_territory(form, field):
-    if field.data.lower() != 'all':
-        raise ValidationError('All is the only available demo territory')
+    if field.data.lower() != 'National level':
+        raise ValidationError('National level is the only available demo territory')
 
 class AddPhoneForm(Form):
 
@@ -96,18 +95,19 @@ def retrieve_trend_image(filename):
     print 'received file: ' + filename
     return send_from_directory(config.fig_dir, filename)
 
-def create_session(from_phone, sites):
+def create_session(from_phone, sites, keyword):
     resp = []
     site_dict = {}
     resp.append("Multiple matches: ")
     for (index, site) in enumerate(sites):
         resp.append("%d) %s (%s) " % (index+1, site.site, site.zip))
-        site_dict[index+1] = site
+        site_dict[index+1] = {'keyword': keyword, 'site': site }
     session[from_phone] = site_dict
-    print "Session created for " + from_phone
+    print "%s session created for %s" % (keyword, from_phone)
+    #print site_dict
     #print resp
     return resp
-
+'''
 def create_msg_chunks(msg_list, response):
 
     cur_len = 0
@@ -138,77 +138,187 @@ def create_msg_chunks(msg_list, response):
     response.message(cur_msg)
     #print response
     return response
+'''
 
-def generate_report(site, response):
+def create_send_twilio_msgs(client, msg_list, fp, tp):
+
+    cur_len = 0
+    num_msgs = 1
+    for msg in msg_list:
+        if ((cur_len + len(msg)) < 155):
+            cur_len += len(msg)
+        else:
+            num_msgs += 1
+            cur_len = len(msg)
+
+    # print num_msgs
+    index = 1
+    if (num_msgs > 1):
+        cur_msg = "%d/%d: " % (index, num_msgs)
+    else:
+        cur_msg = ''
+    for msg in msg_list:
+        if ((len(cur_msg) + len(msg)) < 155):
+            cur_msg = cur_msg + msg
+        else:
+            print cur_msg
+            client.messages.create(to=tp, from_=fp, body=cur_msg)
+            sleep(0.5)
+            index += 1;
+            cur_msg = "%d/%d: " % (index, num_msgs)
+            cur_msg = cur_msg + msg
+
+    client.messages.create(to=tp, from_=fp, body=cur_msg)
+    # print response
+    #return response
+
+def generate_snapshot(site, client, fp, tp):
 
     site_info = models.describe_site_for_twilio(site)
     html = render_template('describe_report.html', r=site_info)
     report_file = site.replace(" ", "_") + '_report.png'
     HTML(string=html).write_png(config.fig_dir + report_file, stylesheets=[CSS(url_for('static', filename='report.css'))],
                                 resolution=200)
+    create_send_twilio_msgs(client, site_info['message'], fp=fp, tp=tp)
+    client.messages.create(from_=fp, to=tp, body='', media_url = (config.images_url + report_file))
 
-    # with response.message(site_info['message']) as m:
-    #   m.media('/trend_figures/' + report_file)
-    response.message(site_info['message'])
-    response.message('').append(twilio.twiml.Media('/trend_figures/' + report_file))
+def generate_description(site, client, fp, tp):
+    site_info = models.describe_site_for_twilio(site)
+    create_send_twilio_msgs(client, site_info['message'], fp=fp, tp=tp)
+    client.messages.create(from_=fp, to=tp, body='', media_url=[(config.images_url + site_info['sales_media']),
+                                                                 (config.images_url + site_info['growth_media'])])
 
-    return response
+def generate_activity(site, client, fp, tp):
+    create_send_twilio_msgs(client, models.site_activity(site), fp=fp, tp=tp)
+
 
 @application.route('/al-twilio', methods=['GET', 'POST'])
 def parse_twilio():
 
     help_message = "Happy to help! I can pull answers to these keywords: "
     invalid_keyword_message = "Sorry, please try one from these: "
-    keywords = ['hi','top3', 'bottom3', 'describe', 'overall performance', 'insights']
+    keywords = ['Hi','Top3', 'Bottom3', 'Describe < >', 'Snapshot < > ', 'Activity < >',
+                'Overall Performance', 'Insights', 'ICPlan', 'ICPerformance']
     from_phone = "+15129638448"
-    words=['overall']
-    #words = ['d', 'cancer']
-    #words = ['10']
+    twilio_phone = "+16502499200"
+
+    words=['icpe']
+    #words = ['a', 'pharmacy']
+    #words = ['4']
     #from_phone = request.form.get('From')
+    #twilio_phone = request.form.get('To')
     #words = request.form.get('Body').lower().split(' ')
     keyword = words[0]
 
     lookup_phone = from_phone.lstrip('+')
     response = twilio.twiml.Response()
 
+    account_sid = "ACd1f3ff258d4e6e7a383128a76b51ef7a"
+    auth_token = "3b070df3871ae55301574d8a6c97ca1e"
+    client = TwilioRestClient(account_sid, auth_token)
+
+    insights_msg = ["Competitive pressure has been increasing in your top accounts. ",
+                   "Here are two accounts with growing potential that may be valuable to call on: City Of Hope National Medical Center, Cedars Sinai Health System"]
+    icplan_msg = ["Your target payout is $5,000. Your final payout is based on two components.",
+              "75% ($3,750) of the payout is based on your attainment (Sales / Goal). 25% is based on relative rank within your division."]
+    opp_msg = ["Here are 3 targets with maximum opportunity near 19104: ",
+           "1. Hospital Of The University Of Pennsylvania, 2. Fox Chase Cancer Center Outpatient, 3. Thomas Jefferson University Hospital"]
+    icperf_msg = ["Your H2'15 PTP is 107%. Mar'16 goal = 8662 and Mar'16 PTP = 90%. You are tracking towards a H1'16 payout of $6,300"]
+
     if (keyword == 'hi' or keyword.startswith('h')):
-        response.message(help_message + ', '.join(keywords))
+        create_send_twilio_msgs(client, msg_list=list(help_message + ', '.join(keywords)),
+                                fp=twilio_phone, tp=from_phone)
+        #response.message(help_message + ', '.join(keywords))
+        #print message
 
     elif (keyword == 'top3' or keyword.startswith('t')):
         msg_list = []
         msg_list.append("Top 3 for ")
         msg_list.extend(models.get_top3_by_phone(lookup_phone))
         #print msg_list
-        response = create_msg_chunks(msg_list, response)
+        #response = create_msg_chunks(msg_list, response)
+        create_send_twilio_msgs(client, msg_list=msg_list,
+                                fp=twilio_phone, tp=from_phone)
 
     elif (keyword == 'bottom3' or keyword.startswith('b')):
         msg_list = []
         msg_list.append("Bottom 3 for ")
         msg_list.extend(models.get_bottom3_by_phone(lookup_phone))
         #print msg_list
-        response = create_msg_chunks(msg_list, response)
+        create_send_twilio_msgs(client, msg_list=msg_list,
+                                fp=twilio_phone, tp=from_phone)
 
     elif (keyword == 'describe' or keyword.startswith('d')):
         sites = models.find_site_by_territory(lookup_phone, words[1])
         if (len(sites) == 0):
-            response.message("No matches")
+            create_send_twilio_msgs(client, list("No matches"),
+                                    fp=twilio_phone, tp=from_phone)
         elif (len(sites) == 1):
-            response = generate_report(sites[0].site, response)
+            generate_description(sites[0].site, client, fp=twilio_phone, tp=from_phone)
         else:
-            response = create_msg_chunks(create_session(lookup_phone, sites), response)
+            create_send_twilio_msgs(client, create_session(lookup_phone, sites, 'describe'),
+                                    fp=twilio_phone, tp=from_phone)
 
-    elif (keyword == 'overall' or keyword.startswith('o')):
-        response = create_msg_chunks(models.overall_performance(lookup_phone), response)
 
-    elif (keyword == 'insights' or keyword.startswith('i')):
-        response = create_msg_chunks(insights_msg, response)
+    elif (keyword == 'snapshot' or keyword.startswith('s')):
+        sites = models.find_site_by_territory(lookup_phone, words[1])
+        if (len(sites) == 0):
+            create_send_twilio_msgs(client, list("No matches"),
+                                    fp=twilio_phone, tp=from_phone)
+        elif (len(sites) == 1):
+            generate_snapshot(sites[0].site, client, fp=twilio_phone, tp=from_phone)
+        else:
+            create_send_twilio_msgs(client, create_session(lookup_phone, sites, 'snapshot'),
+                              fp=twilio_phone, tp=from_phone)
+
+    elif (keyword == 'activity' or keyword.startswith('a')):
+        sites = models.find_site_by_territory(lookup_phone, words[1])
+        if (len(sites) == 0):
+            create_send_twilio_msgs(client, list("No matches"),
+                                    fp=twilio_phone, tp=from_phone)
+        elif (len(sites) == 1):
+            generate_activity(sites[0].site, client, fp=twilio_phone, tp=from_phone)
+        else:
+            create_send_twilio_msgs(client, create_session(lookup_phone, sites, 'activity'),
+                                    fp=twilio_phone, tp=from_phone)
+
+    elif (keyword == 'overall' or keyword.startswith('ov')):
+        create_send_twilio_msgs(client, models.overall_performance(lookup_phone),
+                                           fp=twilio_phone, tp=from_phone)
+
+    elif (keyword == 'insights' or keyword.startswith('in')):
+        create_send_twilio_msgs(client, insights_msg,
+                                fp=twilio_phone, tp=from_phone)
+
+    elif (keyword == 'icperformance' or keyword.startswith('icpe')):
+        create_send_twilio_msgs(client, icperf_msg,
+                                fp=twilio_phone, tp=from_phone)
+
+
+    elif (keyword == 'icplan' or keyword.startswith('icpl')):
+        create_send_twilio_msgs(client, icplan_msg,
+                                fp=twilio_phone, tp=from_phone)
+        client.messages.create(from_=twilio_phone, to=from_phone,
+                               body='', media_url=(config.images_url + 'payout-sample.jpg'))
+
+    elif (keyword == 'opportunities' or keyword.startswith('op')):
+        create_send_twilio_msgs(client, opp_msg,
+                                fp=twilio_phone, tp=from_phone)
 
     elif (keyword.isdigit()):
         # retrieve site from phone's session
         site_dict = session[lookup_phone]
-        response = generate_report(site_dict[int(keyword)].site, response)
+        index = int(keyword)
+        keyword = site_dict[index]['keyword']
+        if (keyword == 'snapshot'):
+            generate_snapshot(site_dict[index]['site'].site, client, fp=twilio_phone, tp=from_phone)
+        elif (keyword == 'activity'):
+            generate_activity(site_dict[index]['site'].site, client, fp=twilio_phone, tp=from_phone)
+        else:
+            generate_description(site_dict[index]['site'].site, client, fp=twilio_phone, tp=from_phone)
     else:
-        response.message(invalid_keyword_message + ', '.join(keywords))
+        create_send_twilio_msgs(client, msg_list=list(invalid_keyword_message + ', '.join(keywords)),
+                                fp=twilio_phone, tp=from_phone)
 
     return (str(response))
 

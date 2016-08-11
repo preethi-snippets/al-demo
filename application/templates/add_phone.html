@@ -66,7 +66,7 @@
                 </div>
 
                   <div class="pure-control-group">
-                    {{ form.territory.label }} {{ form.territory }}
+                    {{ form.territory.label }} {{ form.territory(disabled=True) }}
                        {% if form.territory.errors %}
                         <ul class="errors">{% for error in form.territory.errors %}<li>{{ error }}</li>{% endfor %}</ul>
                      {% endif %}

@@ -51,6 +51,19 @@ class Sales(db.Model):
     if 12 in config.rN_growth:
         r12_growth_pct = db.Column('r12_growth_pct', db.Float)
 
+class Activity(db.Model):
+    __tablename__ = config.activity_data_table_name
+    id = db.Column('id', db.BigInteger, primary_key=True, autoincrement=True)
+    #rank = db.Column('Rank', db.BigInteger)
+    site = db.Column('site', db.String)
+    site_id = db.Column('site_id', db.String, nullable=False)
+    calls = db.Column('calls', db.Integer)
+    samples = db.Column('samples', db.Integer)
+    copay_cards = db.Column('copay_cards', db.Integer)
+    speaker_attendees = db.Column('speaker_attendees', db.Integer)
+    total_activity = db.Column('total_activity', db.Integer)
+    activity_category = db.Column('activity_category', db.String)
+
 
 class TerrAssoc(db.Model):
     __tablename__ = config.terr_assoc_table_name
@@ -129,29 +142,36 @@ def create_sales_table(df):
 
     print df.head()
     engine = db.get_engine(application)
-    print "Creating table ", config.sales_data_table_name
+    print "Creating table ", config.sales_data_table_name, "... ",
     db.metadata.drop_all(engine, tables=[Sales.__table__])
     db.metadata.create_all(engine, tables=[Sales.__table__])
-    print "Generating database from excel sheet: ", config.sales_data_excel_sheet, "... ",
     df.to_sql(con=engine, name=config.sales_data_table_name, flavor=config.db_flavor,
               if_exists='append', index=False)
     print '.'
     #db.metadata.reflect()
 
+def create_activity_table(df):
+    engine = db.get_engine(application)
+    print "Creating table ", config.activity_data_table_name, "... ",
+    db.metadata.drop_all(engine, tables=[Activity.__table__])
+    db.metadata.create_all(engine, tables=[Activity.__table__])
+    df.to_sql(con=engine, name=config.activity_data_table_name, flavor=config.db_flavor,
+              if_exists='append', index=False)
+    print '.'
+
 def create_terr_assoc_table():
+    print "Reading data from excel sheet: ", config.terr_assoc_excel_sheet, "... "
     df = read_excel(config.excel_file, sheetname=config.terr_assoc_excel_sheet,
                     converters={'Name': str, 'Phone': str, 'Territory': str})
 
-
     df.rename(columns={'Name': 'name', 'Phone': 'phone', 'Territory': 'territory'}, inplace=True)
 
-    print df.head()
+    #print df.head()
 
     engine = db.get_engine(application)
-    print "Creating table ", config.terr_assoc_table_name
+    print "Creating table ", config.terr_assoc_table_name, "... ",
     db.metadata.drop_all(engine, tables=[TerrAssoc.__table__])
     db.metadata.create_all(engine, tables=[TerrAssoc.__table__])
-    print "Generating database from excel sheet: ", config.terr_assoc_excel_sheet, "... "
     df.to_sql(con=engine, name=config.terr_assoc_table_name, flavor=config.db_flavor,
               if_exists='append', index=False)
     print '.'
@@ -167,6 +187,8 @@ def read_excel_format_1():
     descriptive_cols = frozenset(['Territory', 'Site', 'Site ID', 'Brand Name',
                                   'Address', 'City', 'State', 'Zip'])
 
+    print "Reading data from excel sheet: ", config.sales_data_excel_sheet, "... "
+
     df = read_excel(config.excel_file, sheetname=config.sales_data_excel_sheet,
                     converters={'Territory':str, 'Site':str, 'Site ID':str, 'Brand Name':str,
                                 'Address': str, 'City': str, 'State': str, 'Zip': str,
@@ -174,7 +196,7 @@ def read_excel_format_1():
                                 'M9':int, 'M10':int, 'M11':int, 'M12':int, 'M13':int, 'M14':int, 'M15':int, 'M16':int,
                                 'M17':int, 'M18':int, 'M19':int, 'M20':int, 'M21': int, 'M22': int, 'M23': int, 'M24': int})
 
-    print df.head
+    #print df.head
 
     relevant_cols = descriptive_cols.union(config.monthly_data_cols)
 
@@ -192,6 +214,8 @@ def read_excel_format_2():
     # Read excel sheet and create dataframe of required format
     # excel sheet format similar to demo data with two level columns
 
+    print "Reading data from excel sheet: ", config.sales_data_excel_sheet, "... "
+
     df = read_excel(config.excel_file, sheetname=config.sales_data_excel_sheet, header=None)
     df.columns = MultiIndex.from_arrays((df.iloc[0:2].fillna(method='ffill', axis=1))[:2].values,
                                            names=['level0', 'level1'])
@@ -204,7 +228,8 @@ def read_excel_format_2():
                       'Site City', 'Site State', 'Site Zip',
                       '%s M1' % brand, '%s M2' % brand, '%s M3' % brand,
                       '%s M4' % brand, '%s M5' % brand, '%s M6' % brand]])
-        df_new['brand_name'] = Series([brand for x in range(len(df_new.index))], index=df_new.index)
+        df_new['brand_name'] = df_new['Site Site'].apply(lambda x: brand)
+        #df_new['brand_name'] = Series([brand for x in range(len(df_new.index))], index=df_new.index)
 
 
         df_new.rename(columns={'Site Site': 'site',
@@ -223,25 +248,63 @@ def read_excel_format_2():
 
         df_list.append(df_new)
 
-    df = concat(df_list)
+    df_sales = concat(df_list)
 
     # change data type to numeric for sales data
     for col in ['M1', 'M2', 'M3', 'M4', 'M5', 'M6']:
-        df[col] = to_numeric(df[col]).round()
+        df_sales[col] = to_numeric(df_sales[col]).round()
 
-    print df.head(n=5)
+    #print df_sales.head(n=5)
 
-    return df
+    #print df.head(n=5)
+    # create "Activity" data from corresponding columns
+    df_activity = df[['Site Site', 'Site Site ID', 'Activity Calls', 'Activity Samples',
+                      'Activity Copay cards', 'Activity Speaker attendees']]
+
+    df_activity.rename(columns={'Site Site': 'site',
+                                'Site Site ID': 'site_id',
+                                'Activity Calls': 'calls',
+                                'Activity Samples': 'samples',
+                                'Activity Copay cards': 'copay_cards',
+                                'Activity Speaker attendees': 'speaker_attendees'}, inplace=True)
+
+    # change relevant columns to numeric data type
+    for col in ['calls', 'samples', 'copay_cards', 'speaker_attendees']:
+        df_activity[col] = to_numeric(df_activity[col]).round()
+
+    # create category
+    df_activity['total_activity'] = df_activity['calls'] + df_activity['samples'] \
+                                    + df_activity['copay_cards'] + df_activity['speaker_attendees']
+
+    def find_cat(value):
+        cat = ''
+        if value <= 150:
+            cat = 'Low'
+        elif value > 200:
+            cat = 'High'
+        else:
+            cat = 'Medium'
+        return cat
+
+
+    df_activity['activity_category'] = df_activity['total_activity'].apply(find_cat)
+
+    #print df_activity.head(n=5)
+
+    return {'sales': df_sales, 'activity': df_activity}
 
 
 def create_and_populate_tables():
-    #df = read_excel_format_1()
 
-    df = read_excel_format_2()
+    if (config.excel_data_format == '1'):
+        df = read_excel_format_1()
+        create_sales_table(df)
+    elif (config.excel_data_format == '2'):
+        df_dict = read_excel_format_2()
+        create_sales_table(df_dict['sales'])
+        create_activity_table(df_dict['activity'])
 
-    create_sales_table(df)
     create_terr_assoc_table()
-
 
 '''
 def populate_db_from_csv():
@@ -264,8 +327,6 @@ def populate_db_from_csv():
     '''
 
 def create_db():
-    #db.drop_all()
-    #db.create_all()
     create_and_populate_tables()
 
 def get_top_3_by_territory(territory, brand_name):
@@ -341,9 +402,9 @@ def get_top3_by_phone(phone):
         all_accounts = Sales.query.filter(
             and_(Sales.territory == territory, Sales.brand_name == brand_name)).order_by(
             Sales.r3_growth_value.desc()).limit(3).all()
-        response.append("%s :" % brand_name.title())
+        response.append("%s : " % brand_name.title())
         for index, account in enumerate(all_accounts):
-            response.append(" %d) %s (growth %s) " % (index+1, account.site, account.r3_growth_value))
+            response.append(" %d. %s (growth %s) " % (index+1, account.site, account.r3_growth_value))
     return response
 
 def get_bottom3_by_phone(phone):
@@ -354,9 +415,9 @@ def get_bottom3_by_phone(phone):
         all_accounts = Sales.query.filter(
             and_(Sales.territory == territory, Sales.brand_name == brand_name)).order_by(
             Sales.r3_growth_value.asc()).limit(3).all()
-        response.append("%s :" % brand_name.title())
+        response.append("%s : " % brand_name.title())
         for index, account in enumerate(all_accounts):
-            response.append(" %d) %s (growth %s) " % (index + 1, account.site, account.r3_growth_value))
+            response.append(" %d. %s (growth %s) " % (index + 1, account.site, account.r3_growth_value))
     return response
 
 def find_site_by_territory(phone, site_input):
@@ -378,46 +439,9 @@ def none_float(input):
     else:
         return "%.1f%%" % (input)
 
-def describe_site_for_twilio(site):
-    print site
-    plot_dict = {}
-    bubble_plot = {}
-    r_growth_pct = {}
-    sales_index = range(1, 7)
-    bubble_index = ['R3 Growth', 'R3 Growth Pct', 'R6 Sales']
-    date = config.m1_month_year.title()
-    sms_resp_str = "As of %s --" % (date)
-
-    #setattr(db.get_engine(application), 'echo', True)
-    for brand_name in (config.primary_brands.union(config.other_brands)):
-        #print str(Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)))
-        #accounts = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).all()
-        account = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).first()
-
-        #print "retrieving for brand = ", brand_name, accounts, accounts.brand_name
-        if account:
-            sms_resp_str = sms_resp_str + \
-                       " %s: " % (brand_name) + \
-                        " contrib: " + none_float(account.r6_sales_contrib) + \
-                        ", growth: " + none_float(account.r3_growth_pct)
-            plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
-                                        account.M4, account.M5, account.M6],
-                                       index=sales_index)
-
-            r_growth_pct[brand_name] = Series([account.r3_growth_pct], index=['R3'])
-            if 6 in config.rN_growth:
-                r_growth_pct[brand_name] = r_growth_pct[brand_name].append(Series([account.r6_growth_pct], index=['R6']))
-            if 12 in config.rN_growth:
-                r_growth_pct[brand_name] = r_growth_pct[brand_name].append(Series([account.r12_growth_pct], index=['R12']))
-
-            bubble_plot[brand_name] = Series([account.r3_growth_value, account.r3_growth_pct, account.r6_sales],
-                                             index=bubble_index)
-            #print accounts.__dict__
-            db.session.expire(account)
-
-    print "size of sms : ", len(sms_resp_str)
+def generate_sales_trend_plot(site, plot_dict, sales_index):
     # Generate sales trend plot for all brands
-    print plot_dict
+    #print plot_dict
     plt.style.use('ggplot')
     DataFrame(plot_dict).plot(marker='.', figsize=(3, 2.5), fontsize=1)
     plt.grid(True)
@@ -429,12 +453,14 @@ def describe_site_for_twilio(site):
     plt.xticks(sales_index, month_labels, fontsize=6.5)
     plt.yticks(fontsize=6.5)
     plt.title("Sales Trends", fontsize=8)
-    plt.legend(prop={'size':6})
+    plt.legend(prop={'size': 6})
     plt.tick_params(length=0)
     sales_trend_filename = site.replace(" ", "_") + '_sales_trend.png'
     # print filename
     plt.savefig(config.fig_dir + '/' + sales_trend_filename)
+    return sales_trend_filename
 
+def generate_growth_trend_plot(site, r_growth_pct):
     # Generate growth trend chart for all brands
     df = DataFrame(r_growth_pct).fillna(0)
     #print df
@@ -452,6 +478,50 @@ def describe_site_for_twilio(site):
     growth_trend_filename = site.replace(" ", "_") + '_growth_trend.png'
     # print filename
     plt.savefig(config.fig_dir + '/' + growth_trend_filename)
+    return growth_trend_filename
+
+def describe_site_for_twilio(site):
+    #print site
+    plot_dict = {}
+    bubble_plot = {}
+    r_growth_pct = {}
+    sales_index = range(1, 7)
+    bubble_index = ['R3 Growth', 'R3 Growth Pct', 'R6 Sales']
+    date = config.m1_month_year.title()
+    sms_resp = []
+    sms_resp.append("Details for %s (%s):" % (site, date))
+
+    #setattr(db.get_engine(application), 'echo', True)
+    for brand_name in (config.primary_brands.union(config.other_brands)):
+        #print str(Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)))
+        #accounts = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).all()
+        account = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).first()
+
+        #print "retrieving for brand = ", brand_name, accounts, accounts.brand_name
+        if account:
+            sms = " %s sales " % (brand_name) + \
+                    "grew by " + none_float(account.r3_growth_pct) + \
+                    " and contributes " + none_float(account.r6_sales_contrib) + \
+                    " to the territory. "
+            sms_resp.append(sms)
+            plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
+                                        account.M4, account.M5, account.M6],
+                                       index=sales_index)
+
+            r_growth_pct[brand_name] = Series([account.r3_growth_pct], index=['R3'])
+            if 6 in config.rN_growth:
+                r_growth_pct[brand_name] = r_growth_pct[brand_name].append(Series([account.r6_growth_pct], index=['R6']))
+            if 12 in config.rN_growth:
+                r_growth_pct[brand_name] = r_growth_pct[brand_name].append(Series([account.r12_growth_pct], index=['R12']))
+
+            bubble_plot[brand_name] = Series([account.r3_growth_value, account.r3_growth_pct, account.r6_sales],
+                                             index=bubble_index)
+            #print accounts.__dict__
+            db.session.expire(account)
+
+    #print sms_resp
+    sales_trend_filename = generate_sales_trend_plot(site, plot_dict, sales_index)
+    growth_trend_filename = generate_growth_trend_plot(site, r_growth_pct)
 
     # Generate bubble chart for all brands
     df = DataFrame(bubble_plot).T.fillna(0)
@@ -480,7 +550,7 @@ def describe_site_for_twilio(site):
     # print filename
     plt.savefig(config.fig_dir + '/' + bubble_chart_filename)
 
-    return {'message': sms_resp_str,
+    return {'message': sms_resp,
             'site': site,
             'site_address': account.address,
             'date': date,
@@ -534,6 +604,19 @@ def overall_performance(phone):
         response.append(" No territory found for phone")
 
     return response
+
+def site_activity(site):
+    activity = Activity.query.filter(Activity.site == site).first()
+    print activity
+
+    sms_resp = []
+    sms_resp.append("%s has had %s activity over the last 3 months." % (site, activity.activity_category))
+    sms_resp.append("The account received %d calls, %d samples, %d copay cards and %d speaker attendees in the last 3 months."
+                    % (activity.calls, activity.samples, activity.copay_cards, activity.speaker_attendees))
+
+    #print sms_resp
+    return sms_resp
+
 
 
 
