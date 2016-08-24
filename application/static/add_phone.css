@@ -1,4 +1,4 @@
-.a0 ,.a1, .a2
+.a0 ,.a1, .a2, .VerticalSpace
     {
         border: none;
         background-color: white;
@@ -48,3 +48,8 @@
     list-style-type: none;
     }
 
+    .VerticalSpace
+    {
+        width: 60%;
+        height: 10px;
+    }

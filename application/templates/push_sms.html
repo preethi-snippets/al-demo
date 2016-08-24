@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <TITLE>Add New Phone Number </TITLE>
+        <META CHARSET="UTF-8" />
+        <link type="text/css" rel="stylesheet" href="http://yui.yahooapis.com/pure/0.6.0/pure-min.css" />
+        <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='add_phone.css') }}" />
+    </head>
+
+    <body>
+
+    <div class="a0">
+        <center>
+        <img src="{{ url_for('static', filename='159-logo-885.png') }}" height="30px" width="200px" />
+        </center>
+    </div>
+
+      <div class="a0">
+        <center>
+            <h3>Ask Al! Demo: Push text message to a phone number</h3>
+        </center>
+    </div>
+
+    <div class="a0">
+        <div>
+            <center>
+                {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                {% for message in messages %}
+                <p class="success"> {{ message }} </p>
+                 {% endfor %}
+                {% endif %}
+                {% endwith %}
+            </center>
+        </div>
+    </div>
+    <div class="a1">
+        <center>
+            <form class="pure-form pure-form-aligned" method=post action="/pushsms" >
+            <fieldset>
+                <div class="pure-control-group">
+                    {{ form.phone.label }} {{ form.phone(size=30) }}
+                       {% if form.phone.errors %}
+                        <ul class="errors">{% for error in form.phone.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                     {% endif %}
+                </div>
+                 <div class="VerticalSpace">
+                </div>
+                <div class="pure-control-group">
+                    {{ form.text_msg.label }} {{ form.text_msg(cols="30", rows="5")}}
+                    {% if form.text_msg.errors %}
+                        <ul class="errors">{% for error in form.text_msg.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+                     {% endif %}
+                </div>
+                <div class="VerticalSpace">
+                </div>
+                <div class="pure-controls">
+                    {{ form.pushsms(class_="pure-button pure-button-primary")}}
+                </div>
+                <div class="VerticalSpace">
+                </div>
+                <div class="pure-controls">
+                    {{ form.insight(class_="pure-button pure-button-primary")}}
+                </div>
+            </fieldset>
+            </form>
+        </center>
+    </div>
+    </body>
+
+</html>

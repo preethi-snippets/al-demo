@@ -395,6 +395,12 @@ def lookup_terr(phone):
     else:
         return None
 
+def none_float(input):
+    if input is None:
+        return "NA"
+    else:
+        return "%.1f%%" % (input)
+
 def get_top3_by_phone(phone):
     territory = lookup_terr(phone)
     response = []
@@ -404,7 +410,9 @@ def get_top3_by_phone(phone):
             Sales.r3_growth_value.desc()).limit(3).all()
         response.append("%s : " % brand_name.title())
         for index, account in enumerate(all_accounts):
-            response.append(" %d. %s (growth %s) " % (index+1, account.site, account.r3_growth_value))
+            rsp = " %d. %s (growth: %s units)" % (index+1, account.site, account.r3_growth_value)
+            #rsp = rsp + none_float(account.r3_growth_pct) + ")"
+            response.append(rsp)
     return response
 
 def get_bottom3_by_phone(phone):
@@ -417,7 +425,9 @@ def get_bottom3_by_phone(phone):
             Sales.r3_growth_value.asc()).limit(3).all()
         response.append("%s : " % brand_name.title())
         for index, account in enumerate(all_accounts):
-            response.append(" %d. %s (growth %s) " % (index + 1, account.site, account.r3_growth_value))
+            rsp = " %d. %s (growth: %s units) " % (index + 1, account.site, account.r3_growth_value)
+            #rsp = rsp + none_float(account.r3_growth_pct) + ")"
+            response.append(rsp)
     return response
 
 def find_site_by_territory(phone, site_input):
@@ -429,15 +439,9 @@ def find_site_by_territory(phone, site_input):
         sites.extend(accounts)
 
     # maybe store these sites in a session?
-    for site in sites:
-        print site.site, site.site_id, site.brand_name
+    #for site in sites:
+     #   print site.site, site.site_id, site.brand_name
     return sites
-
-def none_float(input):
-    if input is None:
-        return "NA"
-    else:
-        return "%.1f%%" % (input)
 
 def generate_sales_trend_plot(site, plot_dict, sales_index):
     # Generate sales trend plot for all brands
@@ -449,6 +453,7 @@ def generate_sales_trend_plot(site, plot_dict, sales_index):
     plt.xlim(xmin=0, xmax=7)
     month_labels = [datetime.datetime.strftime((datetime.datetime.strptime(config.m1_month_year, "%b %y") +
                                                 relativedelta(months=-(i - 1))), "%b %y") for i in sales_index]
+    month_labels.reverse()
     # print month_labels
     plt.xticks(sales_index, month_labels, fontsize=6.5)
     plt.yticks(fontsize=6.5)
@@ -492,7 +497,9 @@ def describe_site_for_twilio(site):
     sms_resp.append("Details for %s (%s):" % (site, date))
 
     #setattr(db.get_engine(application), 'echo', True)
-    for brand_name in (config.primary_brands.union(config.other_brands)):
+    all_brands = list(config.primary_brands)
+    all_brands.extend(list(config.other_brands))
+    for brand_name in all_brands:
         #print str(Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)))
         #accounts = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).all()
         account = Sales.query.filter(and_(Sales.site == site, Sales.brand_name == brand_name)).first()
@@ -504,8 +511,8 @@ def describe_site_for_twilio(site):
                     " and contributes " + none_float(account.r6_sales_contrib) + \
                     " to the territory. "
             sms_resp.append(sms)
-            plot_dict[brand_name] = Series([account.M1, account.M2, account.M3,
-                                        account.M4, account.M5, account.M6],
+            plot_dict[brand_name] = Series([account.M6, account.M5, account.M4,
+                                        account.M3, account.M2, account.M1],
                                        index=sales_index)
 
             r_growth_pct[brand_name] = Series([account.r3_growth_pct], index=['R3'])
@@ -607,7 +614,7 @@ def overall_performance(phone):
 
 def site_activity(site):
     activity = Activity.query.filter(Activity.site == site).first()
-    print activity
+    #print activity
 
     sms_resp = []
     sms_resp.append("%s has had %s activity over the last 3 months." % (site, activity.activity_category))
